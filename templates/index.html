@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YTDown - Free YouTube Video Downloader (MP4 &amp; MP3)</title>
+<meta name="description" content="YTDown lets you save public YouTube videos as MP4 or MP3, in qualities up to 1080p and 4K when the original video offers them. Paste a link, click Download, done.">
+<!-- ================================================================
+     GOOGLE ADSENSE: if your site is approved for AdSense, paste the
+     ad code Google gives you here (inside this comment's place).
+     Approval is NOT automatic - see README-DEPLOY.md.
+     ================================================================ -->
+<style>
+  :root { --bg:#0d0d12; --panel:#17171f; --panel2:#1f1f2a; --text:#f2f2f5; --muted:#a7a7b5; --accent:#e62117; --accent2:#ff5138; --line:#2a2a38; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:18px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); }
+  .logo { font-size:26px; font-weight:800; letter-spacing:.3px; }
+  .logo span { color:var(--accent2); }
+  header .tag { color:var(--muted); font-size:13px; margin-left:auto; }
+  main { max-width:860px; margin:0 auto; padding:34px 18px 60px; }
+  h1 { font-size:34px; text-align:center; margin:8px 0 6px; }
+  .sub { text-align:center; color:var(--muted); margin:0 auto 26px; max-width:620px; line-height:1.55; }
+  .box { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  form.main { display:flex; gap:10px; flex-wrap:wrap; }
+  input[type=url] { flex:1 1 320px; padding:16px; font-size:16px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); color:var(--text); }
+  button.download { padding:16px 34px; font-size:18px; font-weight:700; border:0; border-radius:10px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.download:hover { background:var(--accent2); }
+  button.download:disabled { opacity:.55; cursor:wait; }
+  .hint { color:var(--muted); font-size:13px; margin-top:12px; line-height:1.5; }
+  #status { margin-top:16px; font-size:15px; display:none; }
+  #status.error { color:#ff8a7a; }
+  #status.ok { color:#8be08b; }
+  #result { display:none; margin-top:22px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  #result .row { display:flex; gap:16px; flex-wrap:wrap; }
+  #result img { width:240px; max-width:100%; border-radius:10px; }
+  #result h2 { font-size:19px; margin:2px 0 6px; line-height:1.35; }
+  #result .meta { color:var(--muted); font-size:14px; }
+  details { margin-top:18px; }
+  summary { cursor:pointer; font-weight:600; }
+  .opt { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:11px 4px; border-bottom:1px solid var(--line); font-size:15px; }
+  .opt a { background:var(--panel2); border:1px solid var(--line); color:var(--text); padding:8px 16px; border-radius:8px; text-decoration:none; font-weight:600; white-space:nowrap; }
+  .opt a:hover { border-color:var(--accent2); }
+  .opt .size { color:var(--muted); font-size:13px; }
+  section { margin-top:44px; }
+  section h3 { font-size:22px; margin-bottom:10px; }
+  section p, section li { color:var(--muted); line-height:1.65; }
+  .steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; }
+  .step { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .step b { display:block; margin-bottom:6px; color:var(--text); }
+  .notice { background:#241d10; border:1px solid #554410; color:#f0d489; border-radius:12px; padding:14px 16px; line-height:1.55; font-size:14.5px; }
+  footer { border-top:1px solid var(--line); padding:22px; text-align:center; color:var(--muted); font-size:14px; }
+  footer a { color:var(--muted); margin:0 10px; }
+  code { background:var(--panel2); padding:1px 6px; border-radius:6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">YT<span>Down</span></div>
+  <div class="tag">Free online YouTube downloader</div>
+</header>
+<main>
+  <h1>YouTube Video Downloader</h1>
+  <p class="sub">Paste a YouTube link, press one button, and the video saves straight to your
+     device as an MP4 with sound - in the best quality the original offers, up to 1080p and 4K.
+     No software to install, no account to create.</p>
+
+  <div class="box">
+    <form class="main" id="dlform">
+      <input type="url" id="url" placeholder="Paste your YouTube link here - e.g. https://www.youtube.com/watch?v=..." required>
+      <button class="download" id="dlbtn" type="submit">Download</button>
+    </form>
+    <div class="hint">Works with normal videos, Shorts, youtu.be short links and YouTube Music links.
+      HD and 4K files can take a little while to prepare - please keep this page open until the save starts.</div>
+    <div id="status"></div>
+  </div>
+
+  <div id="result">
+    <div class="row">
+      <img id="thumb" alt="Video thumbnail">
+      <div>
+        <h2 id="vtitle"></h2>
+        <div class="meta" id="vmeta"></div>
+        <p class="meta">Your best-quality MP4 download has been started above. If it did not start,
+           or you want a smaller file or just the audio, use the options below.</p>
+      </div>
+    </div>
+    <details id="advanced">
+      <summary>More options - pick a quality or MP3 audio</summary>
+      <div id="options"></div>
+    </details>
+  </div>
+
+  <section>
+    <div class="steps">
+      <div class="step"><b>1. Copy the link</b>Open the video or Short on YouTube and copy its web address or use the Share button.</div>
+      <div class="step"><b>2. Paste &amp; press Download</b>Put the link in the box above and press the red Download button once. That is all.</div>
+      <div class="step"><b>3. The file saves itself</b>We fetch the best version with sound, put it together for you, and your browser saves the MP4 to your Downloads folder.</div>
+    </div>
+  </section>
+
+  <section>
+    <h3>What can and cannot be downloaded</h3>
+    <p>Normal public videos, Shorts and music videos work. Private videos, members-only or paid
+       content, protected (DRM) films, playlists and channel pages, and live streams that are still
+       running cannot be processed - open a single public video instead. The qualities offered depend
+       on the original upload: if a video was only uploaded in 720p, nothing higher can be created from it.</p>
+  </section>
+
+  <section>
+    <div class="notice"><strong>Please respect creators.</strong> Only download videos that you made
+      yourself, that you have the owner's permission to save, or that you are otherwise legally allowed
+      to keep (for example Creative Commons or public-domain material). YTDown is a tool for personal,
+      lawful use - what you save with it is your responsibility.</div>
+  </section>
+
+  <section>
+    <h3>Quick questions</h3>
+    <p><strong>Is it really free?</strong> Yes - single video downloads are free, with no sign-up.</p>
+    <p><strong>Why does an HD download take a moment?</strong> For 1080p and above, YouTube keeps picture
+       and sound as separate tracks, so the server first joins them into one MP4 for you.</p>
+    <p><strong>The file opened in the player instead of saving?</strong> On some phones, long-press the
+       playing video or use the browser menu to save it, then try again from this page.</p>
+    <p><strong>Why is my quality missing?</strong> Only the qualities present in the original upload can be offered.</p>
+  </section>
+</main>
+<footer>
+  <div>YTDown - a small, independent tool. Not affiliated with YouTube or Google.</div>
+  <div style="margin-top:8px">
+    <a href="/privacy">Privacy Policy</a> &middot;
+    <a href="/terms">Terms of Use</a> &middot;
+    <a href="/dmca">Copyright / DMCA</a>
+  </div>
+</footer>
+<iframe id="dlframe" style="display:none" title="download"></iframe>
+<script>
+const form = document.getElementById('dlform');
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const frame = document.getElementById('dlframe');
+const btn = document.getElementById('dlbtn');
+function setStatus(msg, cls) { statusEl.style.display = 'block'; statusEl.textContent = msg; statusEl.className = cls || ''; }
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const url = document.getElementById('url').value.trim();
+  if (!url) return;
+  btn.disabled = true;
+  resultEl.style.display = 'none';
+  setStatus('Reading your video and preparing the best-quality MP4 with sound. HD and 4K can take a minute or two - please keep this page open...');
+  // Start the one-click download right away; the browser saves the file when it is ready.
+  frame.src = '/download/best?url=' + encodeURIComponent(url);
+  try {
+    const r = await fetch('/api/info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Could not read that video.');
+    document.getElementById('thumb').src = data.thumbnail || '';
+    document.getElementById('vtitle').textContent = data.title;
+    document.getElementById('vmeta').textContent = [data.uploader, data.duration_string].filter(Boolean).join(' - ');
+    const box = document.getElementById('options');
+    box.innerHTML = '';
+    data.options.forEach(o => {
+      const row = document.createElement('div'); row.className = 'opt';
+      const left = document.createElement('span'); left.textContent = o.label;
+      if (o.size) { const s = document.createElement('span'); s.className = 'size'; s.textContent = ' ' + o.size; left.appendChild(s); }
+      const a = document.createElement('a'); a.textContent = 'Save';
+      const q = new URLSearchParams({url, kind: o.kind});
+      if (o.height) q.set('height', o.height);
+      if (o.bitrate) q.set('bitrate', o.bitrate);
+      if (o.format_id) q.set('format_id', o.format_id);
+      a.href = '/download?' + q.toString();
+      row.appendChild(left); row.appendChild(a); box.appendChild(row);
+    });
+    resultEl.style.display = 'block';
+    setStatus('Done - your download should now be saving to your Downloads folder. Other qualities and MP3 are listed below the video title.', 'ok');
+  } catch (err) {
+    frame.src = 'about:blank';
+    setStatus(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
