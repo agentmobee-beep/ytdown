@@ -15,8 +15,15 @@ Optional environment variables:
   YTDOWN_COOKIES        Path to a cookies.txt file. Only needed if YouTube
                         blocks your server's IP ("Sign in to confirm you're
                         not a bot"). Never commit this file anywhere public.
-  YTDOWN_POT_SERVER_HOME  Path to a bgutil PO-token server build, if you run
-                        one (see README-DEPLOY.md, "If downloads stop working").
+  YTDOWN_POT_SERVER_HOME  Path to a bgutil PO-token server build (its
+                        `server` folder). The Docker image bakes one in at
+                        /opt/bgutil/server and start.sh runs it automatically
+                        on http://127.0.0.1:4416, which is the address the
+                        yt-dlp plugin contacts by default - so in Docker no
+                        setup is needed. The path is also passed to the
+                        plugin's script fallback (see base_opts()).
+  YTDOWN_POT_BASE_URL   Base URL of a bgutil PO-token HTTP server, if it is
+                        NOT on the default http://127.0.0.1:4416.
   PORT                  Port to listen on (default 8000).
 """
 
@@ -39,6 +46,7 @@ CLIENTS = [c.strip() for c in os.environ.get(
     "YTDOWN_CLIENTS", "web,mweb,ios,android").split(",") if c.strip()]
 COOKIES = os.environ.get("YTDOWN_COOKIES") or None
 POT_HOME = os.environ.get("YTDOWN_POT_SERVER_HOME") or None
+POT_BASE_URL = os.environ.get("YTDOWN_POT_BASE_URL") or None
 
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 URL_PATTERNS = [
@@ -97,7 +105,17 @@ def base_opts():
     if COOKIES:
         opts["cookiefile"] = COOKIES
     if POT_HOME:
+        # Verified against bgutil-ytdlp-pot-provider 2.0.2: the script
+        # providers read `server_home` from the `youtubepot-bgutilscript`
+        # extractor-args namespace and run <server_home>/build/generate_once.js.
+        # The HTTP provider (preferred, much faster) needs no arg at all when
+        # the server listens on its default http://127.0.0.1:4416 - which is
+        # how start.sh runs the copy baked into the Docker image.
         opts["extractor_args"]["youtubepot-bgutilscript"] = {"server_home": [POT_HOME]}
+    if POT_BASE_URL:
+        # Only needed when the PO-token HTTP server is somewhere other than
+        # the default address (namespace/key per plugin 2.0.2 source).
+        opts["extractor_args"]["youtubepot-bgutilhttp"] = {"base_url": [POT_BASE_URL]}
     return opts
 
 

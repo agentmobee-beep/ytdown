@@ -1,5 +1,8 @@
 flask>=3.0
 gunicorn>=21.2
-yt-dlp>=2025.1.1
+yt-dlp>=2025.5.22
 yt-dlp-ejs>=0.3
-bgutil-ytdlp-pot-provider>=1.2
+# Pinned: the plugin version must match the bgutil PO-token server built
+# into the Docker image (see BGUTIL_VERSION in the Dockerfile). The plugin
+# refuses to use a server whose major version differs from its own.
+bgutil-ytdlp-pot-provider==2.0.2

@@ -129,19 +129,37 @@ only offers a low quality (like 360p), or answers with its anti-bot message
 YouTube's player interfaces (web, mobile web, iOS, Android) and merges
 everything they return - `YTDOWN_CLIENTS` in `app.py` controls the list - but
 on a restricted address the higher qualities (1080p, 4K) may simply not be
-offered. Fixes, in order:
+offered, or extraction may fail completely ("Failed to extract any player
+response"). Fixes, in order:
 
-1. **Update yt-dlp** - YouTube changes things often and yt-dlp follows:
+1. **PO-token server - already built in.** The Docker image now builds the
+   open-source `bgutil-ytdlp-pot-provider` server (version 2.0.2, matching
+   the plugin pinned in `requirements.txt`) into the image at
+   `/opt/bgutil/server`, and `start.sh` starts it automatically in the
+   background on `http://127.0.0.1:4416` before the web app starts - no
+   setup needed on Render. It answers YouTube's "proof of origin" (PO
+   token) checks, which is the standard credential-free fix for extraction
+   failing from hosting-company addresses. To confirm it is running, look
+   in the Render logs for `YTDown: starting bgutil PO-token server` near
+   startup. Notes:
+   - The plugin and the server must stay on the same version. If you ever
+     upgrade one, upgrade the other (`BGUTIL_VERSION` in the `Dockerfile`
+     and the pin in `requirements.txt`).
+   - A PO token does not guarantee success - it helps your traffic look
+     legitimate, but YouTube may still restrict a given host.
+   - Outside Docker (running `start.sh` yourself), it is used automatically
+     too when a build exists at `/opt/bgutil/server` or when you set
+     `YTDOWN_POT_SERVER_HOME` to a server build's `server` folder yourself.
+2. **Update yt-dlp** - YouTube changes things often and yt-dlp follows:
    `./venv/bin/pip install -U yt-dlp` (or rebuild/redeploy, which does the same).
-2. **Cookies** - export a `cookies.txt` for youtube.com from your own browser
-   (there are free "Get cookies.txt" extensions), then set the environment
-   variable `YTDOWN_COOKIES` to its path on the server and restart. Use a
-   spare/secondary Google account for this, keep the file secret, and never
-   put it in GitHub. This usually restores full quality on restricted hosts.
-3. **PO-token server** - the more technical option: build the open-source
-   `bgutil-ytdlp-pot-provider` server (Node.js), then set
-   `YTDOWN_POT_SERVER_HOME` to its `server` folder and restart. The plugin is
-   already in `requirements.txt`.
+3. **Cookies (the next fix if extraction still fails)** - export a
+   `cookies.txt` for youtube.com from your own browser (there are free
+   "Get cookies.txt" extensions). On Render, add it as a **secret file**
+   and set the environment variable `YTDOWN_COOKIES` to its path on the
+   server (for a Render secret file that is `/etc/secrets/cookies.txt`),
+   then restart/redeploy. Use a spare/secondary Google account for this,
+   keep the file secret, and never put it in GitHub. This usually restores
+   full quality on restricted hosts.
 
 Also set expectations honestly for clients on the site: quality can never
 exceed what the original video was uploaded in.
@@ -156,9 +174,10 @@ exceed what the original video was uploaded in.
 | `templates/index.html` | The dark-themed home page with the one-click download. |
 | `templates/privacy.html`, `terms.html`, `dmca.html` | Legal pages - fill in your details. |
 | `requirements.txt` | Python packages needed. |
-| `Dockerfile` | Used by Render / Hugging Face Docker deploys (installs ffmpeg). |
-| `start.sh` | Convenience start script. |
+| `Dockerfile` | Used by Render / Hugging Face Docker deploys. Installs ffmpeg and builds the bgutil PO-token server into the image at `/opt/bgutil/server`. |
+| `start.sh` | Start script: launches the bgutil PO-token server (if present), then the web app. The Docker image runs this as its command. |
 | `venv/` | Local-only Python environment from testing; safe to delete, never deploy it. |
 
 Useful environment variables: `PORT`, `YTDOWN_CLIENTS`, `YTDOWN_COOKIES`,
-`YTDOWN_POT_SERVER_HOME` - all documented at the top of `app.py`.
+`YTDOWN_POT_SERVER_HOME`, `YTDOWN_POT_BASE_URL` - all documented at the top
+of `app.py`.
