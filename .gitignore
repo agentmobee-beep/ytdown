@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+cookies.txt
+*.part
+*.ytdl
+.DS_Store
