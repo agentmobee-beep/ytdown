@@ -19,9 +19,10 @@ Optional environment variables:
                         `server` folder). The Docker image bakes one in at
                         /opt/bgutil/server and start.sh runs it automatically
                         on http://127.0.0.1:4416, which is the address the
-                        yt-dlp plugin contacts by default - so in Docker no
-                        setup is needed. The path is also passed to the
-                        plugin's script fallback (see base_opts()).
+                        yt-dlp plugin's HTTP provider contacts by default -
+                        so in Docker no setup is needed. The value is NOT
+                        passed to the plugin's script provider on purpose:
+                        see base_opts() for why.
   YTDOWN_POT_BASE_URL   Base URL of a bgutil PO-token HTTP server, if it is
                         NOT on the default http://127.0.0.1:4416.
   PORT                  Port to listen on (default 8000).
@@ -104,14 +105,17 @@ def base_opts():
     }
     if COOKIES:
         opts["cookiefile"] = COOKIES
-    if POT_HOME:
-        # Verified against bgutil-ytdlp-pot-provider 2.0.2: the script
-        # providers read `server_home` from the `youtubepot-bgutilscript`
-        # extractor-args namespace and run <server_home>/build/generate_once.js.
-        # The HTTP provider (preferred, much faster) needs no arg at all when
-        # the server listens on its default http://127.0.0.1:4416 - which is
-        # how start.sh runs the copy baked into the Docker image.
-        opts["extractor_args"]["youtubepot-bgutilscript"] = {"server_home": [POT_HOME]}
+    # PO-token providers (bgutil-ytdlp-pot-provider 2.0.2): deliberately do
+    # NOT configure the script provider. When both providers are available
+    # the plugin prioritises the script one, and on Render's free tier its
+    # availability check (`node <server_home>/build/generate_once.js
+    # --version`) timed out after 15s and broke extraction (Render logs,
+    # 2026-11-02: subprocess.TimeoutExpired in getpot_bgutil_script.py).
+    # The HTTP provider needs no configuration at all when the server
+    # listens on its default http://127.0.0.1:4416 - which is how start.sh
+    # runs the copy baked into the Docker image - so leaving the script
+    # provider unconfigured makes the plugin use the fast HTTP one only.
+    # (POT_HOME is still used by start.sh to launch that HTTP server.)
     if POT_BASE_URL:
         # Only needed when the PO-token HTTP server is somewhere other than
         # the default address (namespace/key per plugin 2.0.2 source).
