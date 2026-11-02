@@ -11,7 +11,9 @@ On Render:     gunicorn app:app   (see README-DEPLOY.md)
 Optional environment variables:
   YTDOWN_CLIENTS        Comma-separated yt-dlp YouTube player clients to try,
                         in order (default: web,mweb,ios,android). yt-dlp
-                        merges the format lists of all of them.
+                        merges the format lists of all of them. Set it to an
+                        empty value to let yt-dlp use its own built-in
+                        default client selection instead.
   YTDOWN_COOKIES        Path to a cookies.txt file. Only needed if YouTube
                         blocks your server's IP ("Sign in to confirm you're
                         not a bot"). Never commit this file anywhere public.
@@ -101,8 +103,17 @@ def base_opts():
         "ffmpeg_location": FFMPEG,
         "socket_timeout": 30,
         "retries": 3,
-        "extractor_args": {"youtube": {"player_client": CLIENTS}},
+        # YouTube frequently flags the IPv6 ranges of hosting providers,
+        # which can make every player client return no player response at
+        # all (the failure seen in the Render logs on 2026-11-02). Force
+        # IPv4 so requests leave over the host's regular IPv4 address.
+        "force_ipv4": True,
+        "extractor_args": {"youtube": {}},
     }
+    if CLIENTS:
+        # Only pin the player-client list when one is configured; an empty
+        # YTDOWN_CLIENTS lets yt-dlp fall back to its own default clients.
+        opts["extractor_args"]["youtube"]["player_client"] = CLIENTS
     if COOKIES:
         opts["cookiefile"] = COOKIES
     # PO-token providers (bgutil-ytdlp-pot-provider 2.0.2): deliberately do
