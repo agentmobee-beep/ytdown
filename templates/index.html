@@ -71,6 +71,12 @@
   footer a { color:var(--muted); margin:0 10px; }
   footer a:hover { color:var(--text); }
   code { background:var(--panel2); padding:1px 6px; border-radius:6px; }
+  /* Ad slots */
+  .adslot { margin:26px auto 0; max-width:840px; text-align:center; }
+  .adcap { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); opacity:.65; margin-bottom:8px; }
+  .adbox { display:flex; justify-content:center; }
+  .ad-m { display:none; }
+  @media (max-width:760px) { .ad-d { display:none; } .ad-m { display:block; } .adslot { margin-top:20px; } }
   /* Preparation modal */
   #backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.74); z-index:50; align-items:flex-start; justify-content:center; padding:28px 14px; overflow:auto; }
   #backdrop.open { display:flex; }
@@ -157,6 +163,34 @@
     <div id="status"></div>
   </div>
 
+  <div class="adslot" aria-label="Advertisement">
+    <div class="adcap">Advertisement</div>
+    <div class="adbox ad-d">
+      <script>
+      atOptions = {
+       'key' : 'beeea3e282f8899528ddb43a58aeafc2',
+       'format' : 'iframe',
+       'height' : 90,
+       'width' : 728,
+       'params' : {}
+      };
+      </script>
+      <script src="https://bellnewyork.org/22/beeea3e282f8899528ddb43a58aeafc2"></script>
+    </div>
+    <div class="adbox ad-m">
+      <script>
+      atOptions = {
+       'key' : '07a7698eb173cc3f10af1ce540caea38',
+       'format' : 'iframe',
+       'height' : 50,
+       'width' : 320,
+       'params' : {}
+      };
+      </script>
+      <script src="https://bellnewyork.org/22/07a7698eb173cc3f10af1ce540caea38"></script>
+    </div>
+  </div>
+
   <div id="result">
     <div class="row">
       <img id="thumb" alt="Video thumbnail">
@@ -171,6 +205,22 @@
     <div id="videoopts"></div>
     <div class="secttl">&#127925; Music / Audio</div>
     <div id="audioopts"></div>
+  </div>
+
+  <div class="adslot" aria-label="Advertisement">
+    <div class="adcap">Advertisement</div>
+    <div class="adbox">
+      <script>
+      atOptions = {
+       'key' : '407cca8c383b7a77af9d238d0340104d',
+       'format' : 'iframe',
+       'height' : 250,
+       'width' : 300,
+       'params' : {}
+      };
+      </script>
+      <script src="https://bellnewyork.org/22/407cca8c383b7a77af9d238d0340104d"></script>
+    </div>
   </div>
 
   <section>
@@ -411,5 +461,6 @@ function pollJob(jobId, o) {
   pollTimer = setInterval(tick, 1000);
 }
 </script>
+<script data-cfasync="false" src="https://bellnewyork.org/14/5a2cceea71769c1bf2617660dc7d277f"></script>
 </body>
 </html>
