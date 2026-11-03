@@ -70,12 +70,32 @@ def _writable_cookiefile(path):
         dest = os.path.join(tempfile.gettempdir(), "ytdown-cookies.txt")
         if os.path.abspath(dest) != os.path.abspath(path):
             shutil.copyfile(path, dest)
+        print(f"YTDown: using cookies file {dest}", flush=True)
         return dest
-    except OSError:
+    except Exception as exc:
+        # Never let the copy step break startup; the original file is
+        # still readable, and _close_quietly() below tolerates the
+        # read-only save-back failure if the copy did not happen.
+        print(f"YTDown: cookies copy failed ({exc!r}); using {path} in place",
+              flush=True)
         return path
 
 
 COOKIEFILE = _writable_cookiefile(COOKIES)
+
+
+def _close_quietly(ydl):
+    """Close a YoutubeDL instance, ignoring errors from cookie save-back.
+
+    yt-dlp saves refreshed cookies when the instance closes; if the
+    cookie file cannot be written (read-only mount), close() raises
+    OSError. On Render that turned a normal YouTube refusal into an
+    HTTP 500 (logs, 2026-11-03), so cleanup errors are swallowed here.
+    """
+    try:
+        ydl.close()
+    except Exception:
+        pass
 POT_HOME = os.environ.get("YTDOWN_POT_SERVER_HOME") or None
 POT_BASE_URL = os.environ.get("YTDOWN_POT_BASE_URL") or None
 
@@ -179,11 +199,13 @@ def friendly_error(exc):
 
 def extract_info(video_id):
     """Fetch metadata + formats with yt-dlp (no download)."""
+    ydl = yt_dlp.YoutubeDL(base_opts())
     try:
-        with yt_dlp.YoutubeDL(base_opts()) as ydl:
-            info = ydl.extract_info(canonical_url(video_id), download=False)
+        info = ydl.extract_info(canonical_url(video_id), download=False)
     except DownloadError as exc:
         raise UserError(friendly_error(exc))
+    finally:
+        _close_quietly(ydl)
     if not info:
         raise UserError("We could not read that video. Please check the link and try again.")
     if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
@@ -300,14 +322,16 @@ def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None):
     else:
         raise UserError("Unknown download option.")
 
+    ydl = yt_dlp.YoutubeDL(opts)
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(canonical_url(video_id), download=True)
-            title_for_name = info.get("title")
-            filename = ydl.prepare_filename(info)
+        info = ydl.extract_info(canonical_url(video_id), download=True)
+        title_for_name = info.get("title")
+        filename = ydl.prepare_filename(info)
     except DownloadError as exc:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise UserError(friendly_error(exc))
+    finally:
+        _close_quietly(ydl)
 
     # Post-processing may have changed the extension (merge -> .mp4, audio -> .mp3).
     wanted_ext = {"best": ".mp4", "mp4": ".mp4", "mp3": ".mp3"}.get(kind)
