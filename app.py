@@ -52,6 +52,7 @@ import shutil
 import tempfile
 import threading
 import time
+import traceback
 import uuid
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -266,9 +267,8 @@ def base_opts():
 def friendly_error(exc):
     msg = str(exc)
     if "Sign in to confirm" in msg or "not a bot" in msg:
-        return ("YouTube is currently refusing requests from this server's address "
-                "(its anti-bot check). Please try again later. Site owners: see the "
-                "cookies / PO-token notes in README-DEPLOY.md.")
+        return ("That site is currently refusing requests from this server's address "
+                "(its anti-bot check). Please try again later.")
     if "Unsupported URL" in msg:
         return ("That link is not supported. Please paste a link to a single "
                 "public video (YouTube, Facebook, Instagram, X, TikTok, "
@@ -311,8 +311,8 @@ def extract_info(target_url):
         raise UserError("That video is protected (DRM), so it cannot be downloaded.")
     real = [f for f in formats if (f.get("vcodec") not in (None, "none")) or (f.get("acodec") not in (None, "none"))]
     if not real:
-        raise UserError("YouTube did not offer any downloadable version of that video to our server. "
-                        "This can happen when YouTube restricts a server address - please try again later.")
+        raise UserError("That site did not offer any downloadable version of that video to our server. "
+                        "This can happen when a site restricts a server address - please try again later.")
     return info, formats
 
 
@@ -684,9 +684,15 @@ def _run_job(job_id, key, target_url, kind, height, bitrate, format_id):
             filename, name, tmpdir = download_to_file(
                 target_url, kind, height=height, bitrate=bitrate,
                 format_id=format_id, progress_cb=cb, cached_info=cached)
-        except UserError:
+        except Exception:
+            # The cached-extraction fast path is only an optimisation.
+            # Some extractors (e.g. TikTok's paired video/audio format
+            # ids) produce cached results the downloader cannot replay
+            # cleanly, so ANY failure here earns one fresh-extraction
+            # attempt before the job gives up.
             if cached is None:
                 raise
+            traceback.print_exc()
             filename, name, tmpdir = download_to_file(
                 target_url, kind, height=height, bitrate=bitrate,
                 format_id=format_id, progress_cb=cb, cached_info=None)
@@ -695,6 +701,7 @@ def _run_job(job_id, key, target_url, kind, height, bitrate, format_id):
     except UserError as exc:
         job.update(status="error", error=str(exc))
     except Exception:
+        traceback.print_exc()
         job.update(status="error",
                    error="Something went wrong while preparing that file. "
                          "Please try again.")
