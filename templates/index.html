@@ -11,84 +11,105 @@
      Approval is NOT automatic - see README-DEPLOY.md.
      ================================================================ -->
 <style>
-  :root { --bg:#0d0d12; --panel:#17171f; --panel2:#1f1f2a; --text:#f2f2f5; --muted:#a7a7b5; --accent:#e62117; --accent2:#ff5138; --line:#2a2a38; --green:#3fae5a; }
+  :root { --bg:#08080d; --panel:#12121c; --panel2:#1b1b28; --text:#f4f4f8; --muted:#a2a2b4; --accent:#e62117; --accent2:#ff5138; --line:rgba(255,255,255,.09); --green:#3fae5a; --grad:linear-gradient(135deg,#ff4e45,#ff8a3c); }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
-  header { padding:18px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); }
-  .logo { font-size:26px; font-weight:800; letter-spacing:.3px; }
-  .logo span { color:var(--accent2); }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; color:var(--text);
+    background:
+      radial-gradient(900px 480px at 88% -10%, rgba(255,81,56,.16), transparent 60%),
+      radial-gradient(820px 460px at 6% -12%, rgba(96,84,255,.15), transparent 60%),
+      var(--bg); }
+  header { position:sticky; top:0; z-index:40; padding:14px 20px; display:flex; align-items:center; gap:10px;
+    background:rgba(8,8,13,.78); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+  .logo { font-size:27px; font-weight:800; letter-spacing:.2px; }
+  .logo span, .grad { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
   header .tag { color:var(--muted); font-size:13px; margin-left:auto; }
-  main { max-width:860px; margin:0 auto; padding:34px 18px 60px; }
-  h1 { font-size:34px; text-align:center; margin:8px 0 6px; }
-  .sub { text-align:center; color:var(--muted); margin:0 auto 26px; max-width:620px; line-height:1.55; }
-  .box { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  main { max-width:880px; margin:0 auto; padding:40px 18px 60px; }
+  h1 { font-size:clamp(34px,6.5vw,52px); font-weight:800; letter-spacing:-.5px; text-align:center; margin:6px 0 10px; line-height:1.12; }
+  .sub { text-align:center; color:var(--muted); margin:0 auto; max-width:640px; line-height:1.6; font-size:16.5px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:20px auto 30px; max-width:660px; }
+  .chip { padding:6px 13px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.045); font-size:13px; color:#cfcfe0; white-space:nowrap; }
+  .box { background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.03)); border:1px solid var(--line); border-radius:20px; padding:24px; box-shadow:0 24px 55px rgba(0,0,0,.45); animation:fadeUp .5s ease both; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
   form.main { display:flex; gap:10px; flex-wrap:wrap; }
   .urlwrap { flex:1 1 320px; position:relative; display:flex; }
-  input[type=url] { flex:1; padding:16px 40px 16px 16px; font-size:16px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); color:var(--text); width:100%; }
+  input[type=url] { flex:1; padding:17px 44px 17px 18px; font-size:16px; border-radius:12px; border:1px solid var(--line); background:rgba(0,0,0,.35); color:var(--text); width:100%; transition:border-color .2s, box-shadow .2s; }
+  input[type=url]:focus { outline:none; border-color:var(--accent2); box-shadow:0 0 0 3px rgba(255,81,56,.25); }
   #clearbtn { position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px; display:none; }
-  button.download { padding:16px 34px; font-size:18px; font-weight:700; border:0; border-radius:10px; background:var(--accent); color:#fff; cursor:pointer; }
-  button.download:hover { background:var(--accent2); }
-  button.download:disabled { opacity:.55; cursor:wait; }
-  .hint { color:var(--muted); font-size:13px; margin-top:12px; line-height:1.5; }
+  button.download { padding:17px 36px; font-size:18px; font-weight:700; border:0; border-radius:12px; background:var(--grad); color:#fff; cursor:pointer; box-shadow:0 10px 26px rgba(255,81,56,.35); transition:transform .15s, box-shadow .15s; }
+  button.download:hover { transform:translateY(-1px); box-shadow:0 14px 32px rgba(255,81,56,.45); }
+  button.download:disabled { opacity:.55; cursor:wait; transform:none; }
+  .hint { color:var(--muted); font-size:13px; margin-top:14px; line-height:1.55; }
   #status { margin-top:16px; font-size:15px; display:none; }
   #status.error { color:#ff8a7a; }
   #status.ok { color:#8be08b; }
   .dots::after { content:''; animation:dots 1.2s steps(4) infinite; }
   @keyframes dots { 0% { content:''; } 25% { content:'.'; } 50% { content:'..'; } 75% { content:'...'; } }
-  #result { display:none; margin-top:22px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  #result { display:none; margin-top:24px; background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.03)); border:1px solid var(--line); border-radius:20px; padding:22px; box-shadow:0 24px 55px rgba(0,0,0,.45); }
   #result .row { display:flex; gap:16px; flex-wrap:wrap; }
-  #result img { width:240px; max-width:100%; border-radius:10px; align-self:flex-start; }
-  #result h2 { font-size:19px; margin:2px 0 6px; line-height:1.35; }
+  #result img { width:240px; max-width:100%; border-radius:14px; align-self:flex-start; box-shadow:0 10px 28px rgba(0,0,0,.5); }
+  #result h2 { font-size:20px; margin:2px 0 6px; line-height:1.35; }
   .meta { color:var(--muted); font-size:14px; }
-  .secttl { font-size:17px; font-weight:700; margin:22px 0 4px; }
-  .optrow { display:flex; align-items:center; gap:10px; padding:11px 2px; border-bottom:1px solid var(--line); }
+  .secttl { font-size:18px; font-weight:700; margin:26px 0 6px; }
+  .optrow { display:flex; align-items:center; gap:10px; padding:12px 8px; border-bottom:1px solid var(--line); border-radius:10px; transition:background .15s; }
+  .optrow:hover { background:rgba(255,255,255,.045); }
   .optrow .q { flex:1; font-size:15.5px; font-weight:600; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-  .badge { background:#123324; color:#7ddb9a; border:1px solid #1e4d33; font-size:11px; font-weight:700; padding:2px 6px; border-radius:5px; text-transform:lowercase; }
-  .besttag { background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:5px; }
+  .badge { background:rgba(63,174,90,.14); color:#7ddb9a; border:1px solid rgba(63,174,90,.35); font-size:11px; font-weight:700; padding:2px 6px; border-radius:5px; text-transform:lowercase; }
+  .besttag { background:var(--grad); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:5px; }
   .optrow .size { color:var(--muted); font-size:13.5px; white-space:nowrap; }
-  .optrow button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14.5px; cursor:pointer; white-space:nowrap; }
-  .optrow button:hover { background:var(--accent2); }
-  section { margin-top:44px; }
-  section h3 { font-size:22px; margin-bottom:10px; }
+  .optrow button { background:var(--grad); color:#fff; border:0; border-radius:999px; padding:9px 18px; font-weight:700; font-size:14.5px; cursor:pointer; white-space:nowrap; box-shadow:0 6px 16px rgba(255,81,56,.28); }
+  .optrow button:hover { filter:brightness(1.08); }
+  section { margin-top:46px; }
+  section h3 { font-size:24px; margin-bottom:10px; }
   section p, section li { color:var(--muted); line-height:1.65; }
   .steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; }
-  .step { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
-  .step b { display:block; margin-bottom:6px; color:var(--text); }
-  .notice { background:#241d10; border:1px solid #554410; color:#f0d489; border-radius:12px; padding:14px 16px; line-height:1.55; font-size:14.5px; }
-  footer { border-top:1px solid var(--line); padding:22px; text-align:center; color:var(--muted); font-size:14px; }
+  .step { background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025)); border:1px solid var(--line); border-radius:16px; padding:18px; line-height:1.55; color:var(--muted); }
+  .step b { display:flex; align-items:center; gap:10px; margin-bottom:8px; color:var(--text); font-size:16px; }
+  .num { display:inline-flex; align-items:center; justify-content:center; width:27px; height:27px; border-radius:50%; background:var(--grad); color:#fff; font-size:14px; font-weight:800; flex:none; box-shadow:0 6px 14px rgba(255,81,56,.35); }
+  .notice { background:#241d10; border:1px solid #554410; color:#f0d489; border-radius:14px; padding:14px 16px; line-height:1.55; font-size:14.5px; }
+  footer { border-top:1px solid var(--line); padding:24px 22px; text-align:center; color:var(--muted); font-size:14px; }
   footer a { color:var(--muted); margin:0 10px; }
+  footer a:hover { color:var(--text); }
   code { background:var(--panel2); padding:1px 6px; border-radius:6px; }
   /* Preparation modal */
-  #backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:50; align-items:flex-start; justify-content:center; padding:28px 14px; overflow:auto; }
+  #backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.74); z-index:50; align-items:flex-start; justify-content:center; padding:28px 14px; overflow:auto; }
   #backdrop.open { display:flex; }
-  .modal { background:var(--panel); border:1px solid var(--line); border-radius:14px; max-width:520px; width:100%; padding:0 22px 20px; position:relative; }
-  .modal .mhead { background:var(--accent); margin:0 -22px 16px; padding:14px 52px 14px 22px; border-radius:14px 14px 0 0; font-size:18px; font-weight:700; line-height:1.35; }
+  .modal { background:#14141f; border:1px solid var(--line); border-radius:20px; max-width:520px; width:100%; padding:0 22px 20px; position:relative; box-shadow:0 30px 70px rgba(0,0,0,.6); }
+  .modal .mhead { background:var(--grad); margin:0 -22px 16px; padding:15px 52px 15px 22px; border-radius:20px 20px 0 0; font-size:18px; font-weight:700; line-height:1.35; }
   #mx { position:absolute; top:8px; right:12px; background:transparent; border:0; color:#fff; font-size:26px; cursor:pointer; z-index:2; }
   .mnote { font-size:15px; margin:2px 0 14px; }
-  .mrow { display:flex; gap:14px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px; align-items:center; }
+  .mrow { display:flex; gap:14px; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:10px; align-items:center; }
   .mrow img { width:120px; border-radius:8px; }
   .mrow .mq { font-weight:700; color:#7ddb9a; }
   #mphase { text-align:center; margin:18px 0 10px; font-size:15px; }
-  .bar { background:var(--panel2); border:1px solid var(--line); border-radius:8px; height:30px; overflow:hidden; }
+  .bar { background:var(--panel2); border:1px solid var(--line); border-radius:999px; height:28px; overflow:hidden; }
   .bar i { display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--accent),#ff8a3c); transition:width .5s ease; }
   #mpct { text-align:center; font-weight:800; font-size:17px; margin-top:8px; }
-  .nowbtn { display:block; text-align:center; background:var(--accent); color:#fff; font-size:19px; font-weight:800; padding:15px; border-radius:10px; text-decoration:none; margin:14px 0 8px; cursor:pointer; }
-  .nowbtn:hover { background:var(--accent2); }
+  .nowbtn { display:block; text-align:center; background:var(--grad); color:#fff; font-size:19px; font-weight:800; padding:15px; border-radius:12px; text-decoration:none; margin:14px 0 8px; cursor:pointer; box-shadow:0 10px 26px rgba(255,81,56,.35); }
+  .nowbtn:hover { filter:brightness(1.08); }
   .closebtn { display:block; margin:16px 0 0 auto; background:transparent; border:0; color:var(--text); font-size:15px; cursor:pointer; padding:6px 4px; }
   #merror { color:#ff8a7a; line-height:1.5; }
+  @media (max-width:560px) {
+    header .tag { display:none; }
+    button.download { width:100%; }
+    #result img { width:100%; }
+    main { padding-top:30px; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">YT<span>Down</span></div>
-  <div class="tag">Free online YouTube downloader</div>
+  <div class="logo">Mega<span>Save</span></div>
+  <div class="tag">Free online video downloader</div>
 </header>
 <main>
-  <h1>Video Downloader</h1>
+  <h1>Download videos from <span class="grad">anywhere</span></h1>
   <p class="sub">Download videos online for free as MP4 or MP3 - no installation
      required. Works with YouTube, Facebook, Instagram, X (Twitter), TikTok, Reddit,
      Vimeo and many more sites. Paste a link, pick the quality you want, up to 1080p
      and 4K, and save the file straight to your device.</p>
+  <div class="chips">
+    <span class="chip">YouTube</span><span class="chip">Facebook</span><span class="chip">Instagram</span><span class="chip">TikTok</span><span class="chip">X (Twitter)</span><span class="chip">Snapchat</span><span class="chip">Reddit</span><span class="chip">Vimeo</span><span class="chip">Dailymotion</span><span class="chip">+ 1,000 more sites</span>
+  </div>
 
   <div class="box">
     <form class="main" id="dlform">
@@ -123,9 +144,9 @@
 
   <section>
     <div class="steps">
-      <div class="step"><b>1. Copy the link</b>Open the video on YouTube, Facebook, Instagram, X or another supported site and copy its web address or use the Share button.</div>
-      <div class="step"><b>2. Paste &amp; press Download</b>Put the link in the box above and press the red Download button. The available qualities appear below.</div>
-      <div class="step"><b>3. Pick a quality &amp; save</b>Press Download next to the quality you want, wait a moment while we prepare the file, then press Download NOW to save it.</div>
+      <div class="step"><b><span class="num">1</span> Copy the link</b>Open the video on YouTube, Facebook, Instagram, X or another supported site and copy its web address or use the Share button.</div>
+      <div class="step"><b><span class="num">2</span> Paste &amp; press Download</b>Put the link in the box above and press the Download button. The available qualities appear below.</div>
+      <div class="step"><b><span class="num">3</span> Pick a quality &amp; save</b>Press Download next to the quality you want, wait a moment while we prepare the file, then press Download NOW to save it.</div>
     </div>
   </section>
 
@@ -157,7 +178,7 @@
   </section>
 </main>
 <footer>
-  <div>MegaSave - a small, independent tool. Not affiliated with YouTube or Google.</div>
+  <div>MegaSave - a small, independent tool. Not affiliated with YouTube, Facebook, Instagram, TikTok or any other platform.</div>
   <div style="margin-top:8px">
     <a href="/privacy">Privacy Policy</a> &middot;
     <a href="/terms">Terms of Use</a> &middot;
