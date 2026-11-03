@@ -58,7 +58,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, Response, jsonify, render_template, request, send_file
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -851,6 +851,34 @@ def dmca():
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "service": "MegaSave"})
+
+
+SITE_ROOT = "https://ytdown-vpe5.onrender.com"
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n\n"
+        "Sitemap: " + SITE_ROOT + "/sitemap.xml\n"
+    )
+    return Response(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    pages = ["/", "/privacy", "/terms", "/dmca"]
+    urls = "".join(
+        "  <url><loc>" + SITE_ROOT + p + "</loc></url>\n" for p in pages
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + urls
+        + "</urlset>\n"
+    )
+    return Response(body, mimetype="application/xml")
 
 
 # --------------------------------------------------------------------------
