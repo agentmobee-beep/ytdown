@@ -1,4 +1,4 @@
-"""YTDown - a simple YouTube video downloader web app.
+"""MegaSave - a simple YouTube video downloader web app.
 
 Paste a public YouTube link, click Download once, and the server prepares the
 best-quality MP4 (video + sound merged with ffmpeg) and sends it back as a
@@ -87,13 +87,13 @@ def _writable_cookiefile(path):
         dest = os.path.join(tempfile.gettempdir(), "ytdown-cookies.txt")
         if os.path.abspath(dest) != os.path.abspath(path):
             shutil.copyfile(path, dest)
-        print(f"YTDown: using cookies file {dest}", flush=True)
+        print(f"MegaSave: using cookies file {dest}", flush=True)
         return dest
     except Exception as exc:
         # Never let the copy step break startup; the original file is
         # still readable, and _close_quietly() below tolerates the
         # read-only save-back failure if the copy did not happen.
-        print(f"YTDown: cookies copy failed ({exc!r}); using {path} in place",
+        print(f"MegaSave: cookies copy failed ({exc!r}); using {path} in place",
               flush=True)
         return path
 
@@ -115,11 +115,11 @@ def _cookies_from_b64(data):
         from yt_dlp.cookies import YoutubeDLCookieJar
         jar = YoutubeDLCookieJar(dest)
         jar.load(ignore_discard=True, ignore_expires=True)
-        print(f"YTDown: cookies ready - {len(jar)} cookies loaded from "
+        print(f"MegaSave: cookies ready - {len(jar)} cookies loaded from "
               f"YTDOWN_COOKIES_B64 into {dest}", flush=True)
         return dest
     except Exception as exc:
-        print(f"YTDown: YTDOWN_COOKIES_B64 unusable ({exc!r})", flush=True)
+        print(f"MegaSave: YTDOWN_COOKIES_B64 unusable ({exc!r})", flush=True)
         return None
 
 
@@ -850,7 +850,7 @@ def dmca():
 
 @app.route("/health")
 def health():
-    return jsonify({"ok": True, "service": "YTDown"})
+    return jsonify({"ok": True, "service": "MegaSave"})
 
 
 # --------------------------------------------------------------------------
