@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YTDown - Free YouTube Video Downloader (MP4 &amp; MP3)</title>
-<meta name="description" content="YTDown lets you save public YouTube videos as MP4 or MP3, in qualities up to 1080p and 4K when the original video offers them. Paste a link, pick a quality, save the file.">
+<title>YTDown - Free Video Downloader for YouTube, Facebook, Instagram, X &amp; More (MP4 &amp; MP3)</title>
+<meta name="description" content="YTDown lets you save public videos from YouTube, Facebook, Instagram, X (Twitter), TikTok, Reddit, Vimeo and many other sites as MP4 or MP3, in the best quality the original offers, up to 1080p and 4K. Paste a link, pick a quality, save the file.">
 <!-- ================================================================
      GOOGLE ADSENSE: if your site is approved for AdSense, paste the
      ad code Google gives you here (inside this comment's place).
@@ -84,21 +84,24 @@
   <div class="tag">Free online YouTube downloader</div>
 </header>
 <main>
-  <h1>YouTube Video Downloader</h1>
-  <p class="sub">Download YouTube videos online for free as MP4 or MP3 - no installation
-     required. Paste a link, pick the quality you want, up to 1080p and 4K, and save
-     the file straight to your device.</p>
+  <h1>Video Downloader</h1>
+  <p class="sub">Download videos online for free as MP4 or MP3 - no installation
+     required. Works with YouTube, Facebook, Instagram, X (Twitter), TikTok, Reddit,
+     Vimeo and many more sites. Paste a link, pick the quality you want, up to 1080p
+     and 4K, and save the file straight to your device.</p>
 
   <div class="box">
     <form class="main" id="dlform">
       <div class="urlwrap">
-        <input type="url" id="url" placeholder="Paste your YouTube link here - e.g. https://www.youtube.com/watch?v=..." required>
+        <input type="url" id="url" placeholder="Paste a video link here - YouTube, Facebook, Instagram, X, TikTok, Reddit..." required>
         <button type="button" id="clearbtn" title="Clear">&times;</button>
       </div>
       <button class="download" id="dlbtn" type="submit">Download</button>
     </form>
-    <div class="hint">Works with normal videos, Shorts, youtu.be short links and YouTube Music links.
-      HD and 4K files can take a little while to prepare - please keep this page open until the save starts.</div>
+    <div class="hint">Works with YouTube videos and Shorts, Facebook videos and Reels, Instagram posts
+      and Reels, X (Twitter) videos, TikTok, Reddit, Vimeo and 1,000+ other sites. Some sites
+      only show their videos to logged-in users - those cannot be fetched. HD and 4K files can
+      take a little while to prepare - please keep this page open until the save starts.</div>
     <div id="status"></div>
   </div>
 
@@ -120,7 +123,7 @@
 
   <section>
     <div class="steps">
-      <div class="step"><b>1. Copy the link</b>Open the video or Short on YouTube and copy its web address or use the Share button.</div>
+      <div class="step"><b>1. Copy the link</b>Open the video on YouTube, Facebook, Instagram, X or another supported site and copy its web address or use the Share button.</div>
       <div class="step"><b>2. Paste &amp; press Download</b>Put the link in the box above and press the red Download button. The available qualities appear below.</div>
       <div class="step"><b>3. Pick a quality &amp; save</b>Press Download next to the quality you want, wait a moment while we prepare the file, then press Download NOW to save it.</div>
     </div>
@@ -128,9 +131,10 @@
 
   <section>
     <h3>What can and cannot be downloaded</h3>
-    <p>Normal public videos, Shorts and music videos work. Private videos, members-only or paid
-       content, protected (DRM) films, playlists and channel pages, and live streams that are still
-       running cannot be processed - open a single public video instead. The qualities offered depend
+    <p>Public videos from supported sites work. Private videos, members-only or paid
+       content, protected (DRM) films, playlists and channel/profile pages, videos a site
+       only shows to logged-in users, and live streams that are still running cannot be
+       processed - open a single public video instead. The qualities offered depend
        on the original upload: if a video was only uploaded in 720p, nothing higher can be created from it.</p>
   </section>
 
@@ -144,7 +148,7 @@
   <section>
     <h3>Quick questions</h3>
     <p><strong>Is it really free?</strong> Yes - single video downloads are free, with no sign-up.</p>
-    <p><strong>Why does an HD download take a moment?</strong> For 1080p and above, YouTube keeps picture
+    <p><strong>Why does an HD download take a moment?</strong> For 1080p and above, most sites keep picture
        and sound as separate tracks, so the server first joins them into one MP4 for you. The progress
        bar in the pop-up shows the preparation as it happens.</p>
     <p><strong>The file opened in the player instead of saving?</strong> On some phones, long-press the
@@ -244,7 +248,7 @@ form.addEventListener('submit', async (e) => {
     currentInfo = data;
     document.getElementById('thumb').src = data.thumbnail || '';
     document.getElementById('vtitle').textContent = data.title;
-    document.getElementById('vmeta').textContent = [data.uploader, data.duration_string].filter(Boolean).join(' - ');
+    document.getElementById('vmeta').textContent = [data.site, data.uploader, data.duration_string].filter(Boolean).join(' - ');
     const abox = document.getElementById('audioopts'); abox.innerHTML = '';
     (data.options.audio || []).forEach(o => abox.appendChild(makeRow(o, true)));
     const vbox = document.getElementById('videoopts'); vbox.innerHTML = '';
