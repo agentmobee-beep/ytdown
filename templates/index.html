@@ -294,6 +294,16 @@ async function openModal(o, isAudio) {
   document.getElementById('mbar').style.width = '0%';
   document.getElementById('mpct').textContent = '0%';
   backdrop.classList.add('open');
+  // The best-quality row starts preparing in the background as soon as
+  // the results appear; if this is that row, join that preparation
+  // instead of starting a second one.
+  const topRow = currentInfo && (currentInfo.options.video || [])[0];
+  if (!isAudio && topRow === o && currentInfo.prewarm_job_id) {
+    const jid = currentInfo.prewarm_job_id;
+    currentInfo.prewarm_job_id = null;
+    pollJob(jid, o);
+    return;
+  }
   try {
     const body = { url: currentUrl, kind: o.kind };
     if (o.height) body.height = o.height;
