@@ -17,6 +17,10 @@ Optional environment variables:
   YTDOWN_COOKIES        Path to a cookies.txt file. Only needed if YouTube
                         blocks your server's IP ("Sign in to confirm you're
                         not a bot"). Never commit this file anywhere public.
+                        The file may live on a read-only mount (e.g. a Render
+                        secret file): the app copies it to a writable temp
+                        location at startup, because yt-dlp writes refreshed
+                        cookies back to the file when it closes.
   YTDOWN_POT_SERVER_HOME  Path to a bgutil PO-token server build (its
                         `server` folder). The Docker image bakes one in at
                         /opt/bgutil/server and start.sh runs it automatically
@@ -48,6 +52,30 @@ FFMPEG = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
 CLIENTS = [c.strip() for c in os.environ.get(
     "YTDOWN_CLIENTS", "web,mweb,ios,android").split(",") if c.strip()]
 COOKIES = os.environ.get("YTDOWN_COOKIES") or None
+
+
+def _writable_cookiefile(path):
+    """Return a writable path for the cookies file.
+
+    yt-dlp saves refreshed cookies back to the cookie file when a
+    YoutubeDL context closes. Hosts often mount the configured file
+    read-only (Render secret files live under /etc/secrets), and that
+    write-back crashed every request with "OSError: [Errno 30]
+    Read-only file system" (Render logs, 2026-11-03). Copy the file to
+    a writable temp location at startup and use the copy instead.
+    """
+    if not path:
+        return None
+    try:
+        dest = os.path.join(tempfile.gettempdir(), "ytdown-cookies.txt")
+        if os.path.abspath(dest) != os.path.abspath(path):
+            shutil.copyfile(path, dest)
+        return dest
+    except OSError:
+        return path
+
+
+COOKIEFILE = _writable_cookiefile(COOKIES)
 POT_HOME = os.environ.get("YTDOWN_POT_SERVER_HOME") or None
 POT_BASE_URL = os.environ.get("YTDOWN_POT_BASE_URL") or None
 
@@ -114,8 +142,8 @@ def base_opts():
         # Only pin the player-client list when one is configured; an empty
         # YTDOWN_CLIENTS lets yt-dlp fall back to its own default clients.
         opts["extractor_args"]["youtube"]["player_client"] = CLIENTS
-    if COOKIES:
-        opts["cookiefile"] = COOKIES
+    if COOKIEFILE:
+        opts["cookiefile"] = COOKIEFILE
     # PO-token providers (bgutil-ytdlp-pot-provider 2.0.2): deliberately do
     # NOT configure the script provider. When both providers are available
     # the plugin prioritises the script one, and on Render's free tier its
