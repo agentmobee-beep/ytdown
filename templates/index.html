@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YTDown - Free YouTube Video Downloader (MP4 &amp; MP3)</title>
-<meta name="description" content="YTDown lets you save public YouTube videos as MP4 or MP3, in qualities up to 1080p and 4K when the original video offers them. Paste a link, click Download, done.">
+<meta name="description" content="YTDown lets you save public YouTube videos as MP4 or MP3, in qualities up to 1080p and 4K when the original video offers them. Paste a link, pick a quality, save the file.">
 <!-- ================================================================
      GOOGLE ADSENSE: if your site is approved for AdSense, paste the
      ad code Google gives you here (inside this comment's place).
      Approval is NOT automatic - see README-DEPLOY.md.
      ================================================================ -->
 <style>
-  :root { --bg:#0d0d12; --panel:#17171f; --panel2:#1f1f2a; --text:#f2f2f5; --muted:#a7a7b5; --accent:#e62117; --accent2:#ff5138; --line:#2a2a38; }
+  :root { --bg:#0d0d12; --panel:#17171f; --panel2:#1f1f2a; --text:#f2f2f5; --muted:#a7a7b5; --accent:#e62117; --accent2:#ff5138; --line:#2a2a38; --green:#3fae5a; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
   header { padding:18px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); }
@@ -23,7 +23,9 @@
   .sub { text-align:center; color:var(--muted); margin:0 auto 26px; max-width:620px; line-height:1.55; }
   .box { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
   form.main { display:flex; gap:10px; flex-wrap:wrap; }
-  input[type=url] { flex:1 1 320px; padding:16px; font-size:16px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); color:var(--text); }
+  .urlwrap { flex:1 1 320px; position:relative; display:flex; }
+  input[type=url] { flex:1; padding:16px 40px 16px 16px; font-size:16px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); color:var(--text); width:100%; }
+  #clearbtn { position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px; display:none; }
   button.download { padding:16px 34px; font-size:18px; font-weight:700; border:0; border-radius:10px; background:var(--accent); color:#fff; cursor:pointer; }
   button.download:hover { background:var(--accent2); }
   button.download:disabled { opacity:.55; cursor:wait; }
@@ -31,17 +33,21 @@
   #status { margin-top:16px; font-size:15px; display:none; }
   #status.error { color:#ff8a7a; }
   #status.ok { color:#8be08b; }
+  .dots::after { content:''; animation:dots 1.2s steps(4) infinite; }
+  @keyframes dots { 0% { content:''; } 25% { content:'.'; } 50% { content:'..'; } 75% { content:'...'; } }
   #result { display:none; margin-top:22px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
   #result .row { display:flex; gap:16px; flex-wrap:wrap; }
-  #result img { width:240px; max-width:100%; border-radius:10px; }
+  #result img { width:240px; max-width:100%; border-radius:10px; align-self:flex-start; }
   #result h2 { font-size:19px; margin:2px 0 6px; line-height:1.35; }
-  #result .meta { color:var(--muted); font-size:14px; }
-  details { margin-top:18px; }
-  summary { cursor:pointer; font-weight:600; }
-  .opt { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:11px 4px; border-bottom:1px solid var(--line); font-size:15px; }
-  .opt a { background:var(--panel2); border:1px solid var(--line); color:var(--text); padding:8px 16px; border-radius:8px; text-decoration:none; font-weight:600; white-space:nowrap; }
-  .opt a:hover { border-color:var(--accent2); }
-  .opt .size { color:var(--muted); font-size:13px; }
+  .meta { color:var(--muted); font-size:14px; }
+  .secttl { font-size:17px; font-weight:700; margin:22px 0 4px; }
+  .optrow { display:flex; align-items:center; gap:10px; padding:11px 2px; border-bottom:1px solid var(--line); }
+  .optrow .q { flex:1; font-size:15.5px; font-weight:600; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .badge { background:#123324; color:#7ddb9a; border:1px solid #1e4d33; font-size:11px; font-weight:700; padding:2px 6px; border-radius:5px; text-transform:lowercase; }
+  .besttag { background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:5px; }
+  .optrow .size { color:var(--muted); font-size:13.5px; white-space:nowrap; }
+  .optrow button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14.5px; cursor:pointer; white-space:nowrap; }
+  .optrow button:hover { background:var(--accent2); }
   section { margin-top:44px; }
   section h3 { font-size:22px; margin-bottom:10px; }
   section p, section li { color:var(--muted); line-height:1.65; }
@@ -52,6 +58,24 @@
   footer { border-top:1px solid var(--line); padding:22px; text-align:center; color:var(--muted); font-size:14px; }
   footer a { color:var(--muted); margin:0 10px; }
   code { background:var(--panel2); padding:1px 6px; border-radius:6px; }
+  /* Preparation modal */
+  #backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:50; align-items:flex-start; justify-content:center; padding:28px 14px; overflow:auto; }
+  #backdrop.open { display:flex; }
+  .modal { background:var(--panel); border:1px solid var(--line); border-radius:14px; max-width:520px; width:100%; padding:0 22px 20px; position:relative; }
+  .modal .mhead { background:var(--accent); margin:0 -22px 16px; padding:14px 52px 14px 22px; border-radius:14px 14px 0 0; font-size:18px; font-weight:700; line-height:1.35; }
+  #mx { position:absolute; top:8px; right:12px; background:transparent; border:0; color:#fff; font-size:26px; cursor:pointer; z-index:2; }
+  .mnote { font-size:15px; margin:2px 0 14px; }
+  .mrow { display:flex; gap:14px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px; align-items:center; }
+  .mrow img { width:120px; border-radius:8px; }
+  .mrow .mq { font-weight:700; color:#7ddb9a; }
+  #mphase { text-align:center; margin:18px 0 10px; font-size:15px; }
+  .bar { background:var(--panel2); border:1px solid var(--line); border-radius:8px; height:30px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--accent),#ff8a3c); transition:width .5s ease; }
+  #mpct { text-align:center; font-weight:800; font-size:17px; margin-top:8px; }
+  .nowbtn { display:block; text-align:center; background:var(--accent); color:#fff; font-size:19px; font-weight:800; padding:15px; border-radius:10px; text-decoration:none; margin:14px 0 8px; cursor:pointer; }
+  .nowbtn:hover { background:var(--accent2); }
+  .closebtn { display:block; margin:16px 0 0 auto; background:transparent; border:0; color:var(--text); font-size:15px; cursor:pointer; padding:6px 4px; }
+  #merror { color:#ff8a7a; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -61,13 +85,16 @@
 </header>
 <main>
   <h1>YouTube Video Downloader</h1>
-  <p class="sub">Paste a YouTube link, press one button, and the video saves straight to your
-     device as an MP4 with sound - in the best quality the original offers, up to 1080p and 4K.
-     No software to install, no account to create.</p>
+  <p class="sub">Download YouTube videos online for free as MP4 or MP3 - no installation
+     required. Paste a link, pick the quality you want, up to 1080p and 4K, and save
+     the file straight to your device.</p>
 
   <div class="box">
     <form class="main" id="dlform">
-      <input type="url" id="url" placeholder="Paste your YouTube link here - e.g. https://www.youtube.com/watch?v=..." required>
+      <div class="urlwrap">
+        <input type="url" id="url" placeholder="Paste your YouTube link here - e.g. https://www.youtube.com/watch?v=..." required>
+        <button type="button" id="clearbtn" title="Clear">&times;</button>
+      </div>
       <button class="download" id="dlbtn" type="submit">Download</button>
     </form>
     <div class="hint">Works with normal videos, Shorts, youtu.be short links and YouTube Music links.
@@ -81,21 +108,21 @@
       <div>
         <h2 id="vtitle"></h2>
         <div class="meta" id="vmeta"></div>
-        <p class="meta">Your best-quality MP4 download has been started above. If it did not start,
-           or you want a smaller file or just the audio, use the options below.</p>
+        <p class="meta">Pick a quality below and press its Download button. We prepare the
+           file for you, then one more press saves it to your device.</p>
       </div>
     </div>
-    <details id="advanced">
-      <summary>More options - pick a quality or MP3 audio</summary>
-      <div id="options"></div>
-    </details>
+    <div class="secttl">&#127925; Audio</div>
+    <div id="audioopts"></div>
+    <div class="secttl">&#127909; Video (With Audio)</div>
+    <div id="videoopts"></div>
   </div>
 
   <section>
     <div class="steps">
       <div class="step"><b>1. Copy the link</b>Open the video or Short on YouTube and copy its web address or use the Share button.</div>
-      <div class="step"><b>2. Paste &amp; press Download</b>Put the link in the box above and press the red Download button once. That is all.</div>
-      <div class="step"><b>3. The file saves itself</b>We fetch the best version with sound, put it together for you, and your browser saves the MP4 to your Downloads folder.</div>
+      <div class="step"><b>2. Paste &amp; press Download</b>Put the link in the box above and press the red Download button. The available qualities appear below.</div>
+      <div class="step"><b>3. Pick a quality &amp; save</b>Press Download next to the quality you want, wait a moment while we prepare the file, then press Download NOW to save it.</div>
     </div>
   </section>
 
@@ -118,7 +145,8 @@
     <h3>Quick questions</h3>
     <p><strong>Is it really free?</strong> Yes - single video downloads are free, with no sign-up.</p>
     <p><strong>Why does an HD download take a moment?</strong> For 1080p and above, YouTube keeps picture
-       and sound as separate tracks, so the server first joins them into one MP4 for you.</p>
+       and sound as separate tracks, so the server first joins them into one MP4 for you. The progress
+       bar in the pop-up shows the preparation as it happens.</p>
     <p><strong>The file opened in the player instead of saving?</strong> On some phones, long-press the
        playing video or use the browser menu to save it, then try again from this page.</p>
     <p><strong>Why is my quality missing?</strong> Only the qualities present in the original upload can be offered.</p>
@@ -132,53 +160,190 @@
     <a href="/dmca">Copyright / DMCA</a>
   </div>
 </footer>
-<iframe id="dlframe" style="display:none" title="download"></iframe>
+
+<div id="backdrop">
+  <div class="modal">
+    <button id="mx" title="Close">&times;</button>
+    <div class="mhead" id="mtitle"></div>
+    <div id="mprep">
+      <p class="mnote">&#11088; Your download is being prepared - please do not close this.</p>
+      <div class="mrow">
+        <img id="mthumb" alt="">
+        <div>
+          <div class="mq" id="mquality"></div>
+          <div class="meta" id="mdur"></div>
+        </div>
+      </div>
+      <div id="mphase">Retrieving media resources</div>
+      <div class="bar"><i id="mbar"></i></div>
+      <div id="mpct">0%</div>
+    </div>
+    <div id="mready" style="display:none">
+      <p>Your file is ready. Click the &ldquo;Download NOW&rdquo; button to save it to your device.</p>
+      <a class="nowbtn" id="mnow">&#11015; Download NOW</a>
+      <div class="meta" id="mfile"></div>
+    </div>
+    <div id="merror" style="display:none"></div>
+    <button class="closebtn" id="mclose">Close</button>
+  </div>
+</div>
+
 <script>
 const form = document.getElementById('dlform');
+const urlInput = document.getElementById('url');
+const clearBtn = document.getElementById('clearbtn');
 const statusEl = document.getElementById('status');
 const resultEl = document.getElementById('result');
-const frame = document.getElementById('dlframe');
 const btn = document.getElementById('dlbtn');
-function setStatus(msg, cls) { statusEl.style.display = 'block'; statusEl.textContent = msg; statusEl.className = cls || ''; }
+let currentUrl = '';
+let currentInfo = null;
+
+function setStatus(msg, cls, dots) {
+  statusEl.style.display = 'block';
+  statusEl.textContent = msg;
+  statusEl.className = (cls || '') + (dots ? ' dots' : '');
+}
+urlInput.addEventListener('input', () => { clearBtn.style.display = urlInput.value ? 'block' : 'none'; });
+clearBtn.addEventListener('click', () => { urlInput.value = ''; clearBtn.style.display = 'none'; urlInput.focus(); });
+
+function badges(o) {
+  let h = '';
+  if (o.ext) h += '<span class="badge">' + o.ext + '</span>';
+  if (o.codec) h += '<span class="badge">' + o.codec + '</span>';
+  if (o.tag) h += '<span class="badge">' + o.tag + '</span>';
+  if (o.best) h += '<span class="besttag">Best</span>';
+  return h;
+}
+function makeRow(o, isAudio) {
+  const row = document.createElement('div'); row.className = 'optrow';
+  const q = document.createElement('div'); q.className = 'q';
+  const label = document.createElement('span');
+  label.textContent = isAudio ? (o.quality + ' (.' + o.ext + ')') : o.quality;
+  q.appendChild(label);
+  q.insertAdjacentHTML('beforeend', badges(o));
+  const size = document.createElement('div'); size.className = 'size';
+  size.textContent = o.size || '';
+  const b = document.createElement('button'); b.textContent = 'Download';
+  b.addEventListener('click', () => openModal(o, isAudio));
+  row.appendChild(q); row.appendChild(size); row.appendChild(b);
+  return row;
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const url = document.getElementById('url').value.trim();
+  const url = urlInput.value.trim();
   if (!url) return;
+  currentUrl = url;
   btn.disabled = true;
   resultEl.style.display = 'none';
-  setStatus('Reading your video and preparing the best-quality MP4 with sound. HD and 4K can take a minute or two - please keep this page open...');
-  // Start the one-click download right away; the browser saves the file when it is ready.
-  frame.src = '/download/best?url=' + encodeURIComponent(url);
+  setStatus('Searching', '', true);
   try {
     const r = await fetch('/api/info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Could not read that video.');
+    currentInfo = data;
     document.getElementById('thumb').src = data.thumbnail || '';
     document.getElementById('vtitle').textContent = data.title;
     document.getElementById('vmeta').textContent = [data.uploader, data.duration_string].filter(Boolean).join(' - ');
-    const box = document.getElementById('options');
-    box.innerHTML = '';
-    data.options.forEach(o => {
-      const row = document.createElement('div'); row.className = 'opt';
-      const left = document.createElement('span'); left.textContent = o.label;
-      if (o.size) { const s = document.createElement('span'); s.className = 'size'; s.textContent = ' ' + o.size; left.appendChild(s); }
-      const a = document.createElement('a'); a.textContent = 'Save';
-      const q = new URLSearchParams({url, kind: o.kind});
-      if (o.height) q.set('height', o.height);
-      if (o.bitrate) q.set('bitrate', o.bitrate);
-      if (o.format_id) q.set('format_id', o.format_id);
-      a.href = '/download?' + q.toString();
-      row.appendChild(left); row.appendChild(a); box.appendChild(row);
-    });
+    const abox = document.getElementById('audioopts'); abox.innerHTML = '';
+    (data.options.audio || []).forEach(o => abox.appendChild(makeRow(o, true)));
+    const vbox = document.getElementById('videoopts'); vbox.innerHTML = '';
+    (data.options.video || []).forEach(o => vbox.appendChild(makeRow(o, false)));
     resultEl.style.display = 'block';
-    setStatus('Done - your download should now be saving to your Downloads folder. Other qualities and MP3 are listed below the video title.', 'ok');
+    statusEl.style.display = 'none';
+    resultEl.scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (err) {
-    frame.src = 'about:blank';
     setStatus(err.message, 'error');
   } finally {
     btn.disabled = false;
   }
 });
+
+/* ------- preparation modal ------- */
+const backdrop = document.getElementById('backdrop');
+let pollTimer = null;
+
+function fmtDur(s) {
+  if (!s && s !== 0) return '';
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  const p2 = n => String(n).padStart(2, '0');
+  return 'Duration: ' + p2(h) + ':' + p2(m) + ':' + p2(ss);
+}
+function closeModal() {
+  backdrop.classList.remove('open');
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+document.getElementById('mx').addEventListener('click', closeModal);
+document.getElementById('mclose').addEventListener('click', closeModal);
+backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+
+async function openModal(o, isAudio) {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  document.getElementById('mtitle').textContent = currentInfo ? currentInfo.title : '';
+  document.getElementById('mthumb').src = currentInfo ? (currentInfo.thumbnail || '') : '';
+  document.getElementById('mquality').textContent = isAudio
+    ? ('audio ' + o.ext.toUpperCase() + ' ' + o.quality)
+    : ('video ' + o.quality.toUpperCase());
+  document.getElementById('mdur').textContent = currentInfo ? fmtDur(currentInfo.duration) : '';
+  document.getElementById('mprep').style.display = 'block';
+  document.getElementById('mready').style.display = 'none';
+  const errEl = document.getElementById('merror');
+  errEl.style.display = 'none'; errEl.textContent = '';
+  document.getElementById('mphase').textContent = 'Retrieving media resources';
+  document.getElementById('mbar').style.width = '0%';
+  document.getElementById('mpct').textContent = '0%';
+  backdrop.classList.add('open');
+  try {
+    const body = { url: currentUrl, kind: o.kind };
+    if (o.height) body.height = o.height;
+    if (o.bitrate) body.bitrate = o.bitrate;
+    if (o.format_id) body.format_id = o.format_id;
+    const r = await fetch('/api/prepare', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Could not start that download.');
+    pollJob(data.job_id, o);
+  } catch (err) {
+    showModalError(err.message);
+  }
+}
+function showModalError(msg) {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  document.getElementById('mprep').style.display = 'none';
+  document.getElementById('mready').style.display = 'none';
+  const errEl = document.getElementById('merror');
+  errEl.textContent = msg;
+  errEl.style.display = 'block';
+}
+function pollJob(jobId, o) {
+  const tick = async () => {
+    try {
+      const r = await fetch('/api/progress/' + jobId);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'That preparation is no longer available.');
+      if (d.status === 'error') { showModalError(d.error || 'Preparation failed.'); return; }
+      const pct = Math.max(0, Math.min(100, Math.round(d.percent || 0)));
+      document.getElementById('mbar').style.width = pct + '%';
+      document.getElementById('mpct').textContent = pct + '%';
+      document.getElementById('mphase').textContent =
+        d.phase === 'processing' ? 'Please wait while the file is being prepared for downloading'
+                                 : 'Retrieving media resources';
+      if (d.status === 'ready') {
+        clearInterval(pollTimer); pollTimer = null;
+        document.getElementById('mprep').style.display = 'none';
+        const now = document.getElementById('mnow');
+        now.href = '/api/fetch/' + jobId;
+        document.getElementById('mfile').textContent =
+          [d.name, o.size].filter(Boolean).join(' - ');
+        document.getElementById('mready').style.display = 'block';
+      }
+    } catch (err) {
+      showModalError(err.message);
+    }
+  };
+  tick();
+  pollTimer = setInterval(tick, 1000);
+}
 </script>
 </body>
 </html>
