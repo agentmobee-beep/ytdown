@@ -337,6 +337,40 @@ def public_info(video_id):
     }
 
 
+def _best_format_string(video_id, height_cap=None):
+    """Build the yt-dlp format string for a merged MP4 download.
+
+    Prefer H.264 (avc1) video + AAC audio at the best available height.
+    That is the most widely compatible MP4 - every phone and player
+    handles it - and it matches what established downloader sites
+    serve. (Pure "bestvideo" picks AV1 where available; AV1 is a newer,
+    more efficient codec, so its files are roughly half the size at the
+    same resolution and frame rate, but AV1/Opus in an MP4 container
+    does not play everywhere.) YouTube offers avc1 only up to
+    1080p-class heights, so when the top height has no avc1 - 4K is
+    AV1/VP9-only - fall back to the overall best streams there.
+    """
+    try:
+        _, formats = extract_info(video_id)
+    except UserError:
+        return "bestvideo+bestaudio/best"
+    vids = [f for f in formats
+            if (f.get("vcodec") not in (None, "none")) and f.get("height")]
+    if height_cap:
+        vids = [f for f in vids if f["height"] <= height_cap]
+    if not vids:
+        return "bestvideo+bestaudio/best"
+    top = max(f["height"] for f in vids)
+    has_avc_top = any(
+        f["height"] == top and (f.get("vcodec") or "").startswith("avc1")
+        for f in vids)
+    if has_avc_top:
+        return (f"bestvideo[height={top}][vcodec^=avc1]"
+                f"+bestaudio[acodec^=mp4a]/"
+                f"bestvideo[height={top}]+bestaudio/best")
+    return "bestvideo+bestaudio/best"
+
+
 def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None):
     """Download (and merge/convert if needed). Returns (filepath, download_name)."""
     tmpdir = tempfile.mkdtemp(prefix="ytdown-")
@@ -345,11 +379,10 @@ def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None):
     title_for_name = None
 
     if kind == "best":
-        opts["format"] = "bestvideo+bestaudio/best"
+        opts["format"] = _best_format_string(video_id)
         opts["merge_output_format"] = "mp4"
     elif kind == "mp4" and height:
-        opts["format"] = (f"bestvideo[height<={height}]+bestaudio/"
-                          f"best[height<={height}]/best")
+        opts["format"] = _best_format_string(video_id, height_cap=height)
         opts["merge_output_format"] = "mp4"
     elif kind == "file" and format_id:
         opts["format"] = format_id
