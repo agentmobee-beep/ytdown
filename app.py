@@ -21,6 +21,15 @@ Optional environment variables:
                         secret file): the app copies it to a writable temp
                         location at startup, because yt-dlp writes refreshed
                         cookies back to the file when it closes.
+  YTDOWN_COOKIES_B64    The cookies.txt contents as base64 (single line).
+                        Takes precedence over YTDOWN_COOKIES. Use this when
+                        the host cannot be trusted to mount a secret file
+                        where the app can see it (on Render the secret file
+                        at /etc/secrets/cookies.txt simply did not exist
+                        inside this app's container - logs, 2026-11-03 -
+                        while an environment variable always reaches the
+                        process). The app decodes it to a writable temp
+                        file at startup and logs how many cookies loaded.
   YTDOWN_POT_SERVER_HOME  Path to a bgutil PO-token server build (its
                         `server` folder). The Docker image bakes one in at
                         /opt/bgutil/server and start.sh runs it automatically
@@ -34,6 +43,7 @@ Optional environment variables:
   PORT                  Port to listen on (default 8000).
 """
 
+import base64
 import os
 import re
 import shutil
@@ -81,7 +91,33 @@ def _writable_cookiefile(path):
         return path
 
 
-COOKIEFILE = _writable_cookiefile(COOKIES)
+def _cookies_from_b64(data):
+    """Decode a base64 cookies.txt (env YTDOWN_COOKIES_B64) to a temp file.
+
+    Returns the temp file path, or None if the value is missing/invalid.
+    The loaded-cookie count is logged (never the values) so the server
+    logs prove the cookies really reached the app.
+    """
+    if not data:
+        return None
+    try:
+        raw = base64.b64decode(data.strip(), validate=True)
+        dest = os.path.join(tempfile.gettempdir(), "ytdown-cookies.txt")
+        with open(dest, "wb") as fh:
+            fh.write(raw)
+        from yt_dlp.cookies import YoutubeDLCookieJar
+        jar = YoutubeDLCookieJar(dest)
+        jar.load(ignore_discard=True, ignore_expires=True)
+        print(f"YTDown: cookies ready - {len(jar)} cookies loaded from "
+              f"YTDOWN_COOKIES_B64 into {dest}", flush=True)
+        return dest
+    except Exception as exc:
+        print(f"YTDown: YTDOWN_COOKIES_B64 unusable ({exc!r})", flush=True)
+        return None
+
+
+COOKIES_B64 = os.environ.get("YTDOWN_COOKIES_B64") or None
+COOKIEFILE = _cookies_from_b64(COOKIES_B64) or _writable_cookiefile(COOKIES)
 
 
 def _close_quietly(ydl):
@@ -156,6 +192,11 @@ def base_opts():
         # all (the failure seen in the Render logs on 2026-11-02). Force
         # IPv4 so requests leave over the host's regular IPv4 address.
         "force_ipv4": True,
+        # Current yt-dlp enables only Deno as a JavaScript runtime by
+        # default; without any runtime it warns that YouTube extraction
+        # is degraded and some formats may be missing. The Docker image
+        # ships Node (for the PO-token server), so enable it explicitly.
+        "js_runtimes": {"node": {}},
         "extractor_args": {"youtube": {}},
     }
     if CLIENTS:
