@@ -49,6 +49,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -276,47 +277,100 @@ def fmt_size(num):
     return None
 
 
-def build_options(formats):
-    """Turn the raw yt-dlp format list into friendly download options."""
-    video_heights = {}
-    progressive = []
-    audio_best_size = None
+def fmt_mb(num):
+    """Compact size like '33.43MB' for the option rows. None when unknown."""
+    if not num:
+        return None
+    return f"{float(num) / 1048576:.2f}MB"
+
+
+def _codec_badge(vcodec):
+    v = (vcodec or "").lower()
+    if v.startswith("avc1"):
+        return "avc1"
+    if v.startswith("vp09") or v.startswith("vp9"):
+        return "vp9"
+    if v.startswith("av01"):
+        return "av1"
+    return v.split(".")[0] or None
+
+
+def build_options(formats, duration=None):
+    """Turn the raw yt-dlp format list into option rows for the page.
+
+    Returns {"audio": [...], "video": [...]}. Video rows are one per
+    (resolution, frame-rate) pair, where the resolution number follows
+    the smaller frame dimension - the way downloader sites label
+    portrait Shorts (a 1080x1920 Short is "1080p"). Each row names the
+    exact stream the server will fetch: a ready-made file when YouTube
+    offers video+sound in one stream ("file"), otherwise that video
+    stream merged with the best AAC audio ("merge"), mirroring the
+    codec preference of _best_format_string (H.264 first). Sizes are
+    estimates from YouTube's own numbers, audio included for merges.
+    """
+    def fsize(f):
+        return f.get("filesize") or f.get("filesize_approx")
+
+    audios = [f for f in formats
+              if (f.get("vcodec") in (None, "none"))
+              and (f.get("acodec") not in (None, "none"))]
+    m4as = [f for f in audios if (f.get("acodec") or "").startswith("mp4a")]
+    best_m4a = max(m4as, key=lambda f: f.get("abr") or 0, default=None)
+    best_audio = max(audios, key=lambda f: f.get("abr") or 0, default=None)
+    merge_audio = best_m4a or best_audio
+    merge_audio_size = fsize(merge_audio) if merge_audio else None
+
+    def rank(fmt):
+        # Mirror the download preference: H.264 first, then the bigger
+        # (higher-bitrate) stream.
+        return (1 if (fmt.get("vcodec") or "").startswith("avc1") else 0,
+                fsize(fmt) or 0)
+
+    groups = {}
     for f in formats:
         vcodec = f.get("vcodec") or "none"
-        acodec = f.get("acodec") or "none"
-        height = f.get("height")
-        size = f.get("filesize") or f.get("filesize_approx")
-        if vcodec != "none" and height:
-            entry = video_heights.setdefault(height, {"height": height, "size": None})
-            if size:
-                entry["size"] = max(entry["size"] or 0, size)
-            if acodec != "none" and (f.get("ext") == "mp4"):
-                progressive.append({
-                    "kind": "file", "format_id": f["format_id"],
-                    "label": f"MP4 {height}p (ready-made, no merging)",
-                    "height": height, "size": fmt_size(size),
-                })
-        if vcodec == "none" and acodec != "none" and size:
-            audio_best_size = max(audio_best_size or 0, size)
+        if vcodec == "none" or not f.get("height"):
+            continue
+        p = min(f.get("width") or f["height"], f["height"])
+        fps = int(round(f.get("fps") or 0)) or None
+        key = (p, fps if fps and fps > 30 else None)
+        if key not in groups or rank(f) > rank(groups[key]):
+            groups[key] = f
 
-    options = []
-    for height in sorted(video_heights, reverse=True):
-        tag = {2160: "4K", 1440: "2K"}.get(height, "")
-        label = f"MP4 {height}p" + (f" ({tag})" if tag else "") + " - video + sound, merged"
-        options.append({
-            "kind": "mp4", "height": height, "label": label,
-            "size": fmt_size(video_heights[height]["size"]),
+    video_options = []
+    for (p, fps), f in groups.items():
+        has_audio = (f.get("acodec") not in (None, "none"))
+        vsize = fsize(f)
+        total = vsize
+        if not has_audio and vsize and merge_audio_size:
+            total = vsize + merge_audio_size
+        video_options.append({
+            "kind": "file" if has_audio else "merge",
+            "format_id": f["format_id"],
+            "quality": f"{p}p{fps}" if fps else f"{p}p",
+            "tag": {2160: "4K", 1440: "2K"}.get(p),
+            "height": f["height"], "p": p, "fps": fps,
+            "ext": "mp4", "codec": _codec_badge(f.get("vcodec")),
+            "size": fmt_mb(total), "size_bytes": total,
         })
-    options.extend(sorted(progressive, key=lambda p: -p["height"]))
-    options.append({"kind": "mp3", "bitrate": 320,
-                    "label": "MP3 audio - 320 kbps (best quality)",
-                    "size": fmt_size(audio_best_size)})
-    options.append({"kind": "mp3", "bitrate": 128,
-                    "label": "MP3 audio - 128 kbps (smaller file)",
-                    "size": None})
-    if options and options[0]["kind"] == "mp4":
-        options[0]["label"] += " - best available"
-    return options
+    video_options.sort(key=lambda o: (-o["p"], -(o["fps"] or 0)))
+    if video_options:
+        video_options[0]["best"] = True
+
+    audio_options = []
+    for br in (128, 320):
+        est = int(duration * br * 1000 / 8) if duration else None
+        audio_options.append({
+            "kind": "mp3", "bitrate": br, "quality": f"{br}k", "ext": "mp3",
+            "size": fmt_mb(est), "size_bytes": est,
+        })
+    if best_m4a:
+        abr = int(round(best_m4a.get("abr") or 0)) or 128
+        audio_options.append({
+            "kind": "m4a", "quality": f"{abr}k", "ext": "m4a",
+            "size": fmt_mb(fsize(best_m4a)), "size_bytes": fsize(best_m4a),
+        })
+    return {"audio": audio_options, "video": video_options}
 
 
 def public_info(video_id):
@@ -333,7 +387,7 @@ def public_info(video_id):
         "duration_string": info.get("duration_string"),
         "thumbnail": thumb,
         "webpage_url": info.get("webpage_url") or canonical_url(video_id),
-        "options": build_options(formats),
+        "options": build_options(formats, duration=info.get("duration")),
     }
 
 
@@ -371,11 +425,45 @@ def _best_format_string(video_id, height_cap=None):
     return "bestvideo+bestaudio/best"
 
 
-def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None):
+def _make_progress_hooks(progress_cb):
+    """Translate yt-dlp progress callbacks into (percent, phase) updates.
+
+    A merged download fetches two streams (video, then audio), each
+    reporting 0-100% on its own, so the reported percent is kept
+    monotonic - it never runs backwards when the second stream starts.
+    """
+    state = {"max": 0.0}
+
+    def phook(d):
+        if d.get("status") == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            done = d.get("downloaded_bytes") or 0
+            pct = (done / total * 100) if total else 0.0
+            state["max"] = max(state["max"], min(pct, 99.0))
+            progress_cb(state["max"], "downloading")
+        elif d.get("status") == "finished":
+            state["max"] = max(state["max"], 95.0)
+            progress_cb(state["max"], "processing")
+
+    def pphook(d):
+        if d.get("status") == "started":
+            progress_cb(max(state["max"], 97.0), "processing")
+        elif d.get("status") == "finished":
+            progress_cb(100.0, "processing")
+
+    return phook, pphook
+
+
+def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None,
+                     progress_cb=None):
     """Download (and merge/convert if needed). Returns (filepath, download_name)."""
     tmpdir = tempfile.mkdtemp(prefix="ytdown-")
     opts = base_opts()
     opts["outtmpl"] = os.path.join(tmpdir, "%(title).100s [%(id)s].%(ext)s")
+    if progress_cb is not None:
+        phook, pphook = _make_progress_hooks(progress_cb)
+        opts["progress_hooks"] = [phook]
+        opts["postprocessor_hooks"] = [pphook]
     title_for_name = None
 
     if kind == "best":
@@ -384,8 +472,16 @@ def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None):
     elif kind == "mp4" and height:
         opts["format"] = _best_format_string(video_id, height_cap=height)
         opts["merge_output_format"] = "mp4"
+    elif kind == "merge" and format_id:
+        # One exact video stream (the row the visitor picked) + the best
+        # AAC audio, joined into a single MP4.
+        opts["format"] = (f"{format_id}+bestaudio[acodec^=mp4a]/"
+                          f"{format_id}+bestaudio/best")
+        opts["merge_output_format"] = "mp4"
     elif kind == "file" and format_id:
         opts["format"] = format_id
+    elif kind == "m4a":
+        opts["format"] = "bestaudio[ext=m4a]/bestaudio/best"
     elif kind == "mp3":
         opts["format"] = "bestaudio/best"
         opts["postprocessors"] = [{
@@ -408,7 +504,8 @@ def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None):
         _close_quietly(ydl)
 
     # Post-processing may have changed the extension (merge -> .mp4, audio -> .mp3).
-    wanted_ext = {"best": ".mp4", "mp4": ".mp4", "mp3": ".mp3"}.get(kind)
+    wanted_ext = {"best": ".mp4", "mp4": ".mp4", "merge": ".mp4",
+                  "mp3": ".mp3", "m4a": ".m4a"}.get(kind)
     if wanted_ext and not filename.endswith(wanted_ext):
         candidate = os.path.splitext(filename)[0] + wanted_ext
         if os.path.exists(candidate):
@@ -434,6 +531,54 @@ def serve_prepared_file(filename, download_name, tmpdir):
         threading.Timer(5.0, shutil.rmtree, args=[tmpdir], kwargs={"ignore_errors": True}).start()
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Background preparation jobs
+#
+# The page flow is: pick an option -> the server prepares the file in a
+# background thread while the page polls real progress -> the visitor
+# presses "Download NOW" and the prepared file is served at once.
+# Jobs live in memory (the app runs as a single process) and are swept
+# after 30 minutes.
+# ---------------------------------------------------------------------------
+
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+JOB_MAX_AGE = 1800
+PREPARE_KINDS = {"best", "mp4", "merge", "file", "mp3", "m4a"}
+
+
+def _job_gc():
+    now = time.time()
+    with JOBS_LOCK:
+        stale = [jid for jid, job in JOBS.items()
+                 if now - job["created"] > JOB_MAX_AGE]
+        for jid in stale:
+            job = JOBS.pop(jid)
+            if job.get("tmpdir"):
+                shutil.rmtree(job["tmpdir"], ignore_errors=True)
+
+
+def _run_job(job_id, video_id, kind, height, bitrate, format_id):
+    job = JOBS[job_id]
+
+    def cb(pct, phase):
+        job["percent"] = round(pct, 1)
+        job["phase"] = phase
+
+    try:
+        filename, name, tmpdir = download_to_file(
+            video_id, kind, height=height, bitrate=bitrate,
+            format_id=format_id, progress_cb=cb)
+        job.update(status="ready", percent=100, filename=filename,
+                   name=name, tmpdir=tmpdir)
+    except UserError as exc:
+        job.update(status="error", error=str(exc))
+    except Exception:
+        job.update(status="error",
+                   error="Something went wrong while preparing that file. "
+                         "Please try again.")
 
 
 # --------------------------------------------------------------------------
@@ -478,6 +623,63 @@ def api_info():
         return jsonify(public_info(video_id))
     except UserError as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/prepare", methods=["POST"])
+def api_prepare():
+    """Start preparing one chosen option in the background."""
+    data = request.get_json(silent=True) or {}
+    try:
+        video_id = parse_video_id(data.get("url") or "")
+        kind = data.get("kind") or ""
+        if kind not in PREPARE_KINDS:
+            raise UserError("Unknown download option.")
+        height = data.get("height")
+        bitrate = data.get("bitrate")
+        format_id = data.get("format_id")
+        _job_gc()
+        job_id = uuid.uuid4().hex
+        with JOBS_LOCK:
+            JOBS[job_id] = {"status": "working", "percent": 0,
+                            "phase": "starting", "created": time.time(),
+                            "error": None, "filename": None, "name": None,
+                            "tmpdir": None}
+        threading.Thread(
+            target=_run_job,
+            args=(job_id, video_id, kind,
+                  int(height) if height else None,
+                  int(bitrate) if bitrate else None,
+                  format_id),
+            daemon=True).start()
+        return jsonify({"job_id": job_id})
+    except UserError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/progress/<job_id>")
+def api_progress(job_id):
+    job = JOBS.get(job_id)
+    if job is None:
+        return jsonify({"error": "That preparation is no longer available. "
+                                 "Please start again."}), 404
+    return jsonify({"status": job["status"], "percent": job["percent"],
+                    "phase": job["phase"], "error": job["error"],
+                    "name": job["name"]})
+
+
+@app.route("/api/fetch/<job_id>")
+def api_fetch(job_id):
+    """Serve a file once its preparation job has finished."""
+    job = JOBS.get(job_id)
+    if job is None:
+        return render_template("error.html", message=(
+            "That download is no longer available. Please start again.")), 404
+    if job["status"] != "ready":
+        return render_template("error.html", message=(
+            "That file is still being prepared. Please wait for it to finish.")), 409
+    with JOBS_LOCK:
+        JOBS.pop(job_id, None)
+    return serve_prepared_file(job["filename"], job["name"], job["tmpdir"])
 
 
 @app.route("/download/best")

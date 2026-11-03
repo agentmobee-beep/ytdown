@@ -35,6 +35,6 @@ else
 fi
 
 if command -v "$GUNICORN" >/dev/null 2>&1 || [ -x "$GUNICORN" ]; then
-  exec "$GUNICORN" --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 900 app:app
+  exec "$GUNICORN" --bind 0.0.0.0:${PORT:-8000} --workers 1 --threads 4 --timeout 900 app:app
 fi
 exec "$PYTHON" app.py
