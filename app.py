@@ -58,7 +58,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from flask import Flask, Response, jsonify, render_template, request, send_file
+from flask import Flask, Response, jsonify, render_template, request, send_file, send_from_directory
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -879,6 +879,23 @@ def sitemap_xml():
         + "</urlset>\n"
     )
     return Response(body, mimetype="application/xml")
+
+
+@app.route("/manifest.webmanifest")
+def pwa_manifest():
+    return send_from_directory(
+        app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json"
+    )
+
+
+@app.route("/sw.js")
+def pwa_service_worker():
+    resp = send_from_directory(
+        app.static_folder, "sw.js", mimetype="application/javascript"
+    )
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 # --------------------------------------------------------------------------
