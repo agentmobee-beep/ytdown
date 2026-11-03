@@ -46,6 +46,7 @@ Optional environment variables:
 import base64
 import copy
 import hashlib
+import html as html_lib
 import os
 import re
 import shutil
@@ -53,6 +54,8 @@ import tempfile
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.request
 import uuid
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -286,13 +289,80 @@ def friendly_error(exc):
     return "Something went wrong while reading that video. Please check the link and try again."
 
 
+def _snapchat_spotlight_fallback(target_url):
+    """Build a one-format info dict for a Snapchat Spotlight link.
+
+    yt-dlp's SnapchatSpotlight extractor currently fails on Snapchat's
+    page data ("Unable to extract next.js data"), but the public
+    Spotlight page itself carries the snap's video in its og:video meta
+    tag. Read that page and hand the rest of the pipeline a normal
+    single-file format. Returns None when the link is not a Spotlight
+    link or the page offers no video.
+    """
+    if "snapchat.com" not in target_url or "/spotlight/" not in target_url:
+        return None
+    req = urllib.request.Request(target_url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/130.0 Safari/537.36"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            page = resp.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+
+    def og(prop):
+        m = re.search(r'<meta property="og:%s" content="([^"]+)"'
+                      % re.escape(prop), page)
+        return html_lib.unescape(m.group(1)) if m else None
+
+    video = og("video") or og("video:secure_url")
+    if not video:
+        return None
+    try:
+        width = int(og("video:width") or 0) or None
+    except ValueError:
+        width = None
+    try:
+        height = int(og("video:height") or 0) or None
+    except ValueError:
+        height = None
+    # build_options needs a height for the row label; the label uses the
+    # smaller dimension, so the width alone still labels it honestly.
+    width = width or 540
+    height = height or width
+    snap_id = target_url.rstrip("/").rsplit("/", 1)[-1]
+    return {
+        "_type": "video",
+        "id": snap_id,
+        "title": (og("title") or "Snapchat Spotlight video")[:120],
+        "extractor": "SnapchatSpotlight",
+        "extractor_key": "SnapchatSpotlight",
+        "webpage_url": target_url,
+        "thumbnail": og("image"),
+        "duration": None,
+        "formats": [{
+            "format_id": "spotlight-0",
+            "url": video,
+            "ext": "mp4",
+            "vcodec": "avc1",
+            "acodec": "mp4a",
+            "width": width,
+            "height": height,
+            "protocol": "https",
+        }],
+    }
+
+
 def extract_info(target_url):
     """Fetch metadata + formats with yt-dlp (no download)."""
     ydl = yt_dlp.YoutubeDL(base_opts())
     try:
         info = ydl.extract_info(target_url, download=False)
     except DownloadError as exc:
-        raise UserError(friendly_error(exc))
+        info = _snapchat_spotlight_fallback(target_url)
+        if info is None:
+            raise UserError(friendly_error(exc))
     finally:
         _close_quietly(ydl)
     if not info:
@@ -311,6 +381,9 @@ def extract_info(target_url):
         raise UserError("That video is protected (DRM), so it cannot be downloaded.")
     real = [f for f in formats if (f.get("vcodec") not in (None, "none")) or (f.get("acodec") not in (None, "none"))]
     if not real:
+        fallback = _snapchat_spotlight_fallback(target_url)
+        if fallback is not None:
+            return fallback, fallback["formats"]
         raise UserError("That site did not offer any downloadable version of that video to our server. "
                         "This can happen when a site restricts a server address - please try again later.")
     return info, formats
