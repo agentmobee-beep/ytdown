@@ -45,6 +45,7 @@ Optional environment variables:
 
 import base64
 import copy
+import hashlib
 import os
 import re
 import shutil
@@ -181,6 +182,40 @@ def canonical_url(video_id):
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+def parse_target(raw_url):
+    """Resolve a pasted link to (cache_key, target_url).
+
+    YouTube links keep the long-standing video-ID validation (playlists
+    and channel pages rejected) and are normalised to the canonical
+    watch URL. Any other public http(s) link is passed to yt-dlp as-is:
+    the engine supports 1,000+ sites (Facebook, Instagram, X, TikTok,
+    Reddit, Vimeo, ...), and an unsupported link simply gets a friendly
+    error after the lookup. Private/loopback/IP-literal hosts are
+    refused up front so the endpoint cannot be used to probe internal
+    addresses.
+    """
+    url = (raw_url or "").strip()
+    if not url:
+        raise UserError("Please paste a video link first.")
+    if not re.match(r"^https?://", url, re.I):
+        url = "https://" + url
+    m = re.match(r"^https?://([^/?#]+)", url, re.I)
+    if not m:
+        raise UserError("That does not look like a valid link.")
+    host = m.group(1).lower().split(":")[0]
+    if ("." not in host or host == "localhost"
+            or host.endswith((".local", ".internal", ".lan"))
+            or re.match(r"^\d{1,3}(\.\d{1,3}){3}$", host)
+            or ":" in host):
+        raise UserError("That link is not supported. Please paste a link "
+                        "to a public video page.")
+    if "youtube.com" in host or "youtu.be" in host:
+        video_id = parse_video_id(url)
+        return "yt:" + video_id, canonical_url(video_id)
+    key = "url:" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:32]
+    return key, url
+
+
 def base_opts():
     opts = {
         "quiet": True,
@@ -234,6 +269,14 @@ def friendly_error(exc):
         return ("YouTube is currently refusing requests from this server's address "
                 "(its anti-bot check). Please try again later. Site owners: see the "
                 "cookies / PO-token notes in README-DEPLOY.md.")
+    if "Unsupported URL" in msg:
+        return ("That link is not supported. Please paste a link to a single "
+                "public video (YouTube, Facebook, Instagram, X, TikTok, "
+                "Reddit, Vimeo and many other sites work).")
+    low = msg.lower()
+    if "login" in low or "log in" in low or "sign in" in low or "cookies" in low:
+        return ("That video needs a login to view, so our server cannot see "
+                "it. Videos that are public without a login work best here.")
     if "Private video" in msg or "private" in msg.lower() and "video" in msg.lower():
         return "That video is private, so it cannot be downloaded."
     if "Video unavailable" in msg or "unavailable" in msg.lower():
@@ -243,17 +286,20 @@ def friendly_error(exc):
     return "Something went wrong while reading that video. Please check the link and try again."
 
 
-def extract_info(video_id):
+def extract_info(target_url):
     """Fetch metadata + formats with yt-dlp (no download)."""
     ydl = yt_dlp.YoutubeDL(base_opts())
     try:
-        info = ydl.extract_info(canonical_url(video_id), download=False)
+        info = ydl.extract_info(target_url, download=False)
     except DownloadError as exc:
         raise UserError(friendly_error(exc))
     finally:
         _close_quietly(ydl)
     if not info:
         raise UserError("We could not read that video. Please check the link and try again.")
+    if info.get("_type") == "playlist" or "entries" in info:
+        raise UserError("That link opened a list of videos. Please open one "
+                        "single video and paste that video's link instead.")
     if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
         raise UserError("That video is a live stream or a scheduled premiere. "
                         "Live content cannot be downloaded - please try again once it has ended and is posted as a normal video.")
@@ -407,27 +453,28 @@ def _cache_get(video_id):
     return None
 
 
-def public_info(video_id):
-    info, formats = extract_info(video_id)
+def public_info(key, target_url):
+    info, formats = extract_info(target_url)
     thumb = info.get("thumbnail")
     thumbs = info.get("thumbnails") or []
     if thumbs:
         thumb = max(thumbs, key=lambda t: (t.get("width") or 0)) .get("url", thumb)
     payload = {
-        "id": video_id,
+        "id": key,
+        "site": info.get("extractor_key") or info.get("extractor") or "",
         "title": info.get("title") or "Untitled video",
         "uploader": info.get("uploader") or info.get("channel") or "",
         "duration": info.get("duration"),
         "duration_string": info.get("duration_string"),
         "thumbnail": thumb,
-        "webpage_url": info.get("webpage_url") or canonical_url(video_id),
+        "webpage_url": info.get("webpage_url") or target_url,
         "options": build_options(formats, duration=info.get("duration")),
     }
-    _cache_put(video_id, info, payload)
+    _cache_put(key, info, payload)
     return payload
 
 
-def _best_format_string(video_id, height_cap=None):
+def _best_format_string(target_url, height_cap=None):
     """Build the yt-dlp format string for a merged MP4 download.
 
     Prefer H.264 (avc1) video + AAC audio at the best available height.
@@ -441,7 +488,7 @@ def _best_format_string(video_id, height_cap=None):
     AV1/VP9-only - fall back to the overall best streams there.
     """
     try:
-        _, formats = extract_info(video_id)
+        _, formats = extract_info(target_url)
     except UserError:
         return "bestvideo+bestaudio/best"
     return _format_string_from_formats(formats, height_cap)
@@ -495,7 +542,7 @@ def _make_progress_hooks(progress_cb):
     return phook, pphook
 
 
-def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None,
+def download_to_file(target_url, kind, height=None, bitrate=None, format_id=None,
                      progress_cb=None, cached_info=None):
     """Download (and merge/convert if needed). Returns (filepath, download_name).
 
@@ -516,13 +563,13 @@ def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None,
     if kind == "best":
         opts["format"] = (_format_string_from_formats(
             cached_info.get("formats") or []) if cached_info is not None
-            else _best_format_string(video_id))
+            else _best_format_string(target_url))
         opts["merge_output_format"] = "mp4"
     elif kind == "mp4" and height:
         opts["format"] = (_format_string_from_formats(
             cached_info.get("formats") or [], height_cap=height)
             if cached_info is not None
-            else _best_format_string(video_id, height_cap=height))
+            else _best_format_string(target_url, height_cap=height))
         opts["merge_output_format"] = "mp4"
     elif kind == "merge" and format_id:
         # One exact video stream (the row the visitor picked) + the best
@@ -554,7 +601,7 @@ def download_to_file(video_id, kind, height=None, bitrate=None, format_id=None,
             filename = (downloads[0].get("filepath") if downloads else None) \
                 or ydl.prepare_filename(result)
         else:
-            info = ydl.extract_info(canonical_url(video_id), download=True)
+            info = ydl.extract_info(target_url, download=True)
             title_for_name = info.get("title")
             filename = ydl.prepare_filename(info)
     except DownloadError as exc:
@@ -620,7 +667,7 @@ def _job_gc():
                 shutil.rmtree(job["tmpdir"], ignore_errors=True)
 
 
-def _run_job(job_id, video_id, kind, height, bitrate, format_id):
+def _run_job(job_id, key, target_url, kind, height, bitrate, format_id):
     job = JOBS[job_id]
 
     def cb(pct, phase):
@@ -631,17 +678,17 @@ def _run_job(job_id, video_id, kind, height, bitrate, format_id):
         # Fast path: download from the search step's cached extraction.
         # If that ever fails (e.g. the URLs aged out), retry once with a
         # fresh extraction before giving up.
-        entry = _cache_get(video_id)
+        entry = _cache_get(key)
         cached = entry["info"] if entry else None
         try:
             filename, name, tmpdir = download_to_file(
-                video_id, kind, height=height, bitrate=bitrate,
+                target_url, kind, height=height, bitrate=bitrate,
                 format_id=format_id, progress_cb=cb, cached_info=cached)
         except UserError:
             if cached is None:
                 raise
             filename, name, tmpdir = download_to_file(
-                video_id, kind, height=height, bitrate=bitrate,
+                target_url, kind, height=height, bitrate=bitrate,
                 format_id=format_id, progress_cb=cb, cached_info=None)
         job.update(status="ready", percent=100, filename=filename,
                    name=name, tmpdir=tmpdir)
@@ -653,7 +700,7 @@ def _run_job(job_id, video_id, kind, height, bitrate, format_id):
                          "Please try again.")
 
 
-def _start_job(video_id, kind, height, bitrate, format_id):
+def _start_job(key, target_url, kind, height, bitrate, format_id):
     _job_gc()
     job_id = uuid.uuid4().hex
     with JOBS_LOCK:
@@ -662,7 +709,8 @@ def _start_job(video_id, kind, height, bitrate, format_id):
                         "error": None, "filename": None, "name": None,
                         "tmpdir": None}
     threading.Thread(target=_run_job,
-                     args=(job_id, video_id, kind, height, bitrate, format_id),
+                     args=(job_id, key, target_url, kind, height, bitrate,
+                           format_id),
                      daemon=True).start()
     return job_id
 
@@ -676,7 +724,7 @@ PREWARM = {}
 PREWARM_MAX_BYTES = 120 * 1024 * 1024
 
 
-def _ensure_prewarm(video_id, payload):
+def _ensure_prewarm(key, target_url, payload):
     rows = (payload.get("options") or {}).get("video") or []
     if not rows:
         return None
@@ -685,14 +733,14 @@ def _ensure_prewarm(video_id, payload):
     if size and size > PREWARM_MAX_BYTES:
         return None
     sig = (top.get("kind"), top.get("format_id"), top.get("height"))
-    rec = PREWARM.get(video_id)
+    rec = PREWARM.get(key)
     if rec and rec["sig"] == sig:
         job = JOBS.get(rec["job_id"])
         if job and job["status"] in ("working", "ready"):
             return rec["job_id"]
-    job_id = _start_job(video_id, top.get("kind"),
+    job_id = _start_job(key, target_url, top.get("kind"),
                         top.get("height"), None, top.get("format_id"))
-    PREWARM[video_id] = {"sig": sig, "job_id": job_id}
+    PREWARM[key] = {"sig": sig, "job_id": job_id}
     return job_id
 
 
@@ -734,11 +782,11 @@ def api_info():
     data = request.get_json(silent=True) or {}
     url = data.get("url") or request.form.get("url") or ""
     try:
-        video_id = parse_video_id(url)
-        entry = _cache_get(video_id)
-        payload = entry["payload"] if entry else public_info(video_id)
+        key, target_url = parse_target(url)
+        entry = _cache_get(key)
+        payload = entry["payload"] if entry else public_info(key, target_url)
         payload = dict(payload)
-        payload["prewarm_job_id"] = _ensure_prewarm(video_id, payload)
+        payload["prewarm_job_id"] = _ensure_prewarm(key, target_url, payload)
         return jsonify(payload)
     except UserError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -749,14 +797,14 @@ def api_prepare():
     """Start preparing one chosen option in the background."""
     data = request.get_json(silent=True) or {}
     try:
-        video_id = parse_video_id(data.get("url") or "")
+        key, target_url = parse_target(data.get("url") or "")
         kind = data.get("kind") or ""
         if kind not in PREPARE_KINDS:
             raise UserError("Unknown download option.")
         height = data.get("height")
         bitrate = data.get("bitrate")
         format_id = data.get("format_id")
-        job_id = _start_job(video_id, kind,
+        job_id = _start_job(key, target_url, kind,
                             int(height) if height else None,
                             int(bitrate) if bitrate else None,
                             format_id)
@@ -795,8 +843,8 @@ def api_fetch(job_id):
 def download_best():
     """One-click download: best available MP4 with sound, merged automatically."""
     try:
-        video_id = parse_video_id(request.args.get("url", ""))
-        filename, name, tmpdir = download_to_file(video_id, "best")
+        _, target_url = parse_target(request.args.get("url", ""))
+        filename, name, tmpdir = download_to_file(target_url, "best")
         return serve_prepared_file(filename, name, tmpdir)
     except UserError as exc:
         return render_template("error.html", message=str(exc)), 400
@@ -806,13 +854,13 @@ def download_best():
 def download_option():
     """Advanced download: a specific option chosen from /api/info's list."""
     try:
-        video_id = parse_video_id(request.args.get("url", ""))
+        _, target_url = parse_target(request.args.get("url", ""))
         kind = request.args.get("kind", "")
         height = request.args.get("height", type=int)
         bitrate = request.args.get("bitrate", type=int)
         format_id = request.args.get("format_id")
         filename, name, tmpdir = download_to_file(
-            video_id, kind, height=height, bitrate=bitrate, format_id=format_id)
+            target_url, kind, height=height, bitrate=bitrate, format_id=format_id)
         return serve_prepared_file(filename, name, tmpdir)
     except UserError as exc:
         return render_template("error.html", message=str(exc)), 400
