@@ -949,9 +949,15 @@ def api_progress(job_id):
     if job is None:
         return jsonify({"error": "That preparation is no longer available. "
                                  "Please start again."}), 404
+    size = None
+    if job["status"] == "ready" and job.get("filename"):
+        try:
+            size = os.path.getsize(job["filename"])
+        except OSError:
+            size = None
     return jsonify({"status": job["status"], "percent": job["percent"],
                     "phase": job["phase"], "error": job["error"],
-                    "name": job["name"]})
+                    "name": job["name"], "size_bytes": size})
 
 
 @app.route("/api/fetch/<job_id>")
@@ -994,6 +1000,29 @@ def download_option():
         return serve_prepared_file(filename, name, tmpdir)
     except UserError as exc:
         return render_template("error.html", message=str(exc)), 400
+
+
+# --------------------------------------------------------------------------
+# Telegram bot (optional): enabled only when both env vars are set.
+# Webhook model - Telegram POSTs updates to us, so no extra process or
+# polling is needed and the bot rides on this same service.
+# --------------------------------------------------------------------------
+
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or None
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET") or None
+
+if TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET:
+    from telegram_bot import TelegramBot
+    _telegram_bot = TelegramBot(TELEGRAM_BOT_TOKEN, SITE_ROOT)
+
+    @app.route("/telegram/webhook/<secret>", methods=["POST"])
+    def telegram_webhook(secret):
+        if secret != TELEGRAM_WEBHOOK_SECRET:
+            return jsonify({"ok": False}), 404
+        update = request.get_json(silent=True) or {}
+        threading.Thread(target=_telegram_bot.handle_update,
+                         args=(update,), daemon=True).start()
+        return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
