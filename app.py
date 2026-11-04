@@ -848,6 +848,11 @@ def dmca():
     return render_template("dmca.html")
 
 
+@app.route("/creators")
+def creators():
+    return render_template("creators.html")
+
+
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "service": "MegaSave"})
@@ -868,7 +873,7 @@ def robots_txt():
 
 @app.route("/sitemap.xml")
 def sitemap_xml():
-    pages = ["/", "/privacy", "/terms", "/dmca"]
+    pages = ["/", "/creators", "/privacy", "/terms", "/dmca"]
     urls = "".join(
         "  <url><loc>" + SITE_ROOT + p + "</loc></url>\n" for p in pages
     )
