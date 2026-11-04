@@ -357,6 +357,31 @@ function makeRow(o, isAudio) {
   return row;
 }
 
+async function fetchInfo(url) {
+  // The free server sleeps when idle and, while it wakes, the host
+  // answers with its own holding page (not JSON). Retry patiently
+  // with a friendly message instead of failing the search.
+  const deadline = Date.now() + 100000;
+  let waking = false;
+  for (;;) {
+    let data = null;
+    let serverError = null;
+    try {
+      const r = await fetch('/api/info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
+      const text = await r.text();
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+      if (data && !r.ok) serverError = new Error(data.error || 'Could not read that video.');
+    } catch (err) {
+      data = null; // network hiccup while the server wakes
+    }
+    if (serverError) throw serverError;
+    if (data) return data;
+    if (Date.now() > deadline) throw new Error('The server is taking too long to wake up. Please try again in a moment.');
+    if (!waking) { waking = true; setStatus('Waking up the server - the first visit can take up to a minute', '', true); }
+    await new Promise(res => setTimeout(res, 5000));
+  }
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const url = urlInput.value.trim();
@@ -366,9 +391,7 @@ form.addEventListener('submit', async (e) => {
   resultEl.style.display = 'none';
   setStatus('Searching', '', true);
   try {
-    const r = await fetch('/api/info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Could not read that video.');
+    const data = await fetchInfo(url);
     currentInfo = data;
     document.getElementById('thumb').src = data.thumbnail || '';
     document.getElementById('vtitle').textContent = data.title;
@@ -486,6 +509,9 @@ function pollJob(jobId, o) {
 <script data-cfasync="false" src="https://bellnewyork.org/14/5a2cceea71769c1bf2617660dc7d277f"></script>
 <script>
 // MegaSave app (PWA): register the service worker and offer one-tap install.
+// If the free server has dozed off, start waking it the moment the
+// page opens, so it is ready by the time a link is pasted.
+fetch('/health', { cache: 'no-store' }).catch(function () {});
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('/sw.js').catch(function () {});
