@@ -114,6 +114,9 @@
   #mpct { text-align:center; font-weight:800; font-size:17px; margin-top:8px; }
   .nowbtn { display:block; text-align:center; background:var(--grad); color:#fff; font-size:19px; font-weight:800; padding:15px; border-radius:12px; text-decoration:none; margin:14px 0 8px; cursor:pointer; box-shadow:0 10px 26px rgba(255,81,56,.35); }
   .nowbtn:hover { filter:brightness(1.08); }
+  .sharebtn { display:block; width:100%; text-align:center; background:transparent; color:var(--text); border:1px solid var(--line); font-size:15px; font-weight:700; padding:12px; border-radius:12px; margin:10px 0 4px; cursor:pointer; }
+  .sharebtn:hover { border-color:rgba(255,255,255,.3); }
+  #sharemsg { text-align:center; color:var(--green); font-size:13px; min-height:16px; margin-top:4px; }
   .closebtn { display:block; margin:16px 0 0 auto; background:transparent; border:0; color:var(--text); font-size:15px; cursor:pointer; padding:6px 4px; }
   #merror { color:#ff8a7a; line-height:1.5; }
   @media (max-width:560px) {
@@ -283,6 +286,7 @@
 <footer>
   <div>MegaSave - a small, independent tool. Not affiliated with YouTube, Facebook, Instagram, TikTok or any other platform.</div>
   <div style="margin-top:8px">
+    <a href="/creators">For Creators</a> &middot;
     <a href="/privacy">Privacy Policy</a> &middot;
     <a href="/terms">Terms of Use</a> &middot;
     <a href="/dmca">Copyright / DMCA</a>
@@ -310,6 +314,8 @@
       <p>Your file is ready. Click the &ldquo;Download NOW&rdquo; button to save it to your device.</p>
       <a class="nowbtn" id="mnow">&#11015; Download NOW</a>
       <div class="meta" id="mfile"></div>
+      <button class="sharebtn" id="mshare" type="button">Share MegaSave with a friend</button>
+      <div id="sharemsg"></div>
     </div>
     <div id="merror" style="display:none"></div>
     <button class="closebtn" id="mclose">Close</button>
@@ -515,6 +521,26 @@ fetch('/health', { cache: 'no-store' }).catch(function () {});
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('/sw.js').catch(function () {});
+  });
+}
+var shareBtn = document.getElementById('mshare');
+if (shareBtn) {
+  shareBtn.addEventListener('click', function () {
+    var shareData = {
+      title: 'MegaSave - Free Video Downloader',
+      text: 'I use MegaSave to save videos in HD and 4K from YouTube, TikTok, Instagram, Facebook, X and more. Free, no sign-up:',
+      url: 'https://ytdown-vpe5.onrender.com/'
+    };
+    var msg = document.getElementById('sharemsg');
+    if (navigator.share) {
+      navigator.share(shareData).catch(function () {});
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareData.text + ' ' + shareData.url).then(function () {
+        if (msg) msg.textContent = 'Link copied - send it to a friend!';
+      }).catch(function () {});
+    } else if (msg) {
+      msg.textContent = shareData.url;
+    }
   });
 }
 var deferredInstallPrompt = null;
