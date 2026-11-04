@@ -1,7 +1,12 @@
-// MegaSave service worker — network-first, so visitors always get the
-// freshest page and ads; the cache only covers icons and an offline
-// fallback for the homepage. Downloads and APIs are never cached.
-const CACHE = 'megasave-shell-v1';
+// MegaSave service worker.
+// - Page navigations: stale-while-revalidate. A returning visitor (or
+//   the installed app) sees the MegaSave page instantly from cache
+//   while a fresh copy loads in the background. This hides the free
+//   hosting provider's "application loading" page on the occasions
+//   the server has to wake up first.
+// - Icons / manifest: network-first with cache fallback.
+// - API calls and downloads are never cached or intercepted.
+const CACHE = 'megasave-shell-v2';
 const SHELL = [
   '/',
   '/static/manifest.webmanifest',
@@ -25,16 +30,57 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return; // downloads / API posts pass through
+  if (url.origin !== location.origin) return; // ads and other external scripts pass through
   if (url.pathname.startsWith('/api/')) return; // never cache API answers
+
+  if (e.request.mode === 'navigate') {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const cached = (await cache.match(e.request, { ignoreSearch: true })) || (await cache.match('/'));
+      const network = fetch(e.request)
+        .then(async (res) => {
+          if (res && res.ok) {
+            // While the server wakes, the host answers with its own
+            // holding page. Never let that page into the cache - only
+            // cache responses that are really ours.
+            const probe = res.clone();
+            const text = await probe.text().catch(() => '');
+            if (text.indexOf('MegaSave') !== -1) {
+              cache.put(e.request, res.clone()).catch(() => {});
+            }
+          }
+          return res;
+        })
+        .catch(() => null);
+      if (cached) {
+        e.waitUntil(network);
+        return cached;
+      }
+      const res = await network;
+      return res || (await cache.match('/')) || Response.error();
+    })());
+    return;
+  }
+
+  // Static files: network-first, cache fallback, and only cache the
+  // kinds of files we expect (never the host's holding page).
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        if (res && res.ok && url.origin === location.origin) {
+        const type = (res && res.headers.get('content-type')) || '';
+        if (
+          res &&
+          res.ok &&
+          (type.indexOf('image/') === 0 ||
+            type.indexOf('application/manifest+json') !== -1 ||
+            type.indexOf('javascript') !== -1 ||
+            type.indexOf('text/css') !== -1)
+        ) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
         }
         return res;
       })
-      .catch(() => caches.match(e.request).then((hit) => hit || caches.match('/')))
+      .catch(() => caches.match(e.request))
   );
 });
