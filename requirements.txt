@@ -1,6 +1,9 @@
 flask>=3.0
 gunicorn>=21.2
-yt-dlp>=2025.5.22
+# Stable yt-dlp (2026.10.26) stopped extracting YouTube on 2026-11-03
+# ("Failed to extract any player response" on every client, cookies fine).
+# Pinned to the 2026-11-04 nightly, which carries the newest extractor fixes.
+yt-dlp==2026.11.4.232659.dev0
 yt-dlp-ejs>=0.3
 # Pinned: the plugin version must match the bgutil PO-token server built
 # into the Docker image (see BGUTIL_VERSION in the Dockerfile). The plugin
