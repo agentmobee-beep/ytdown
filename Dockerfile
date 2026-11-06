@@ -50,10 +50,11 @@ RUN mkdir -p /opt/warp && cd /opt/warp \
 # http://127.0.0.1:4416 (its default address, internal to this container).
 COPY --from=bgutil /usr/local/bin/node /usr/local/bin/node
 COPY --from=bgutil /src/server /opt/bgutil/server
-# Deno is yt-dlp's default-enabled JavaScript runtime (>=2.3.0 needed for
-# the EJS challenge solver). Node alone must be opted in; Deno needs no
-# configuration, so shipping it guarantees a working runtime.
-COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+# NOTE: no Deno in this image on purpose. Deno was tried (2026-11-06)
+# but on the 512 MB free tier its per-extraction process pushed the
+# container over the memory limit and the host killed it roughly every
+# 2 minutes during YouTube work. Node 22 (copied above for the PO-token
+# server) is enabled as yt-dlp's JS runtime instead and uses far less.
 ENV YTDOWN_POT_SERVER_HOME=/opt/bgutil/server
 
 WORKDIR /app

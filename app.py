@@ -240,7 +240,7 @@ def base_opts():
         # default; without any runtime it warns that YouTube extraction
         # is degraded and some formats may be missing. The Docker image
         # ships Node (for the PO-token server), so enable it explicitly.
-        "js_runtimes": {"node": {}, "deno": {}},
+        "js_runtimes": {"node": {}},
         "extractor_args": {"youtube": {}},
     }
     if CLIENTS:
