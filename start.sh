@@ -26,6 +26,28 @@ else
   echo "YTDown: (extraction may fail on restricted hosts; see README-DEPLOY.md)"
 fi
 
+# WARP egress for YouTube: if a WARP profile exists (or can be
+# registered now), run wireproxy as a SOCKS5 proxy on 127.0.0.1:25344.
+# The app sends YouTube traffic - and only YouTube traffic - through
+# it, because this host's own IP is blocked by YouTube.
+if [ -d /opt/warp ]; then
+  if [ ! -f /opt/warp/wgcf-profile.conf ] && [ -x /opt/warp/wgcf ]; then
+    (cd /opt/warp && ./wgcf register --accept-tos >/dev/null 2>&1 \
+      && ./wgcf generate -p wgcf-profile.conf >/dev/null 2>&1) || true
+  fi
+  if [ -f /opt/warp/wgcf-profile.conf ]; then
+    grep -q '^\[Socks5\]' /opt/warp/wgcf-profile.conf \
+      || printf '\n[Socks5]\nBindAddress = 127.0.0.1:25344\n' >> /opt/warp/wgcf-profile.conf
+    if command -v wireproxy >/dev/null 2>&1; then
+      echo "YTDown: starting WARP proxy (wireproxy) on 127.0.0.1:25344"
+      wireproxy -c /opt/warp/wgcf-profile.conf &
+      sleep 2
+    fi
+  else
+    echo "YTDown: no WARP profile available - YouTube will use the direct egress."
+  fi
+fi
+
 if [ -d venv ]; then
   GUNICORN=./venv/bin/gunicorn
   PYTHON=./venv/bin/python

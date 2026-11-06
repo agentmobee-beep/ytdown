@@ -20,8 +20,29 @@ FROM python:3.12-slim
 
 # ffmpeg is needed to join separate video+sound tracks (1080p and above)
 # and to convert audio to MP3.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Cloudflare WARP egress for YouTube traffic: this host's own IP is
+# hard-blocked by YouTube (403 on every player API request), so YouTube
+# requests leave through a free WARP tunnel instead. wgcf registers a
+# WARP identity and generates the WireGuard profile; wireproxy runs it
+# as a userspace SOCKS5 proxy on 127.0.0.1:25344 (no root/NET_ADMIN
+# needed). Registration is attempted at build time and retried by
+# start.sh at boot; if it fails, the app simply runs direct-only.
+ARG WGCF_VERSION=2.3.1
+ARG WIREPROXY_VERSION=1.1.3
+RUN mkdir -p /opt/warp && cd /opt/warp \
+    && curl -fsSL -o wgcf "https://github.com/ViRb3/wgcf/releases/download/v${WGCF_VERSION}/wgcf_${WGCF_VERSION}_linux_amd64" \
+    && chmod +x wgcf \
+    && curl -fsSL -o wireproxy.tar.gz "https://github.com/windtf/wireproxy/releases/download/v${WIREPROXY_VERSION}/wireproxy_linux_amd64.tar.gz" \
+    && tar -xzf wireproxy.tar.gz && rm wireproxy.tar.gz \
+    && mv wireproxy /usr/local/bin/wireproxy \
+    && (./wgcf register --accept-tos \
+        && ./wgcf generate -p wgcf-profile.conf \
+        && printf '\n[Socks5]\nBindAddress = 127.0.0.1:25344\n' >> wgcf-profile.conf \
+        && echo "WARP: profile registered at build time") \
+       || echo "WARP: build-time registration failed; start.sh will retry"
 
 # Node.js runtime + the prebuilt bgutil PO-token server from stage 1.
 # start.sh launches the server in the background before gunicorn starts;

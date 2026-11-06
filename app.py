@@ -376,9 +376,55 @@ def _snapchat_spotlight_fallback(target_url):
     }
 
 
+# ---------------------------------------------------------------------------
+# YouTube egress: this host's own IP is hard-blocked by YouTube (every
+# player API request answered 403, the webpage 429 - proven by verbose
+# diagnostic logs on 2026-11-06 across all clients, with/without cookies,
+# with PO tokens generated, and with Chrome TLS impersonation). The fix
+# is a different egress for YouTube traffic only: a Cloudflare WARP
+# tunnel run inside the container (wireproxy SOCKS5 on 127.0.0.1:25344,
+# started by start.sh). Other platforms keep the direct connection -
+# they work and must not regress. YTDOWN_PROXY overrides the proxy URL;
+# YTDOWN_PROXY=off disables it. Extraction and download must use the
+# SAME egress because YouTube's media URLs are bound to the IP that
+# extracted them, so both paths share this decision (and the recorded
+# outcome of the last extraction attempt).
+# ---------------------------------------------------------------------------
+
+_YT_PROXY_OK = {"v": None}
+
+
+def _proxy_url():
+    val = os.environ.get("YTDOWN_PROXY", "socks5://127.0.0.1:25344")
+    return None if val.strip().lower() in ("", "off", "none") else val
+
+
+def _is_youtube_url(target_url):
+    return "youtube.com" in target_url or "youtu.be" in target_url
+
+
 def extract_info(target_url):
     """Fetch metadata + formats with yt-dlp (no download)."""
-    ydl = yt_dlp.YoutubeDL(base_opts())
+    if _is_youtube_url(target_url) and _proxy_url() \
+            and _YT_PROXY_OK["v"] is not False:
+        try:
+            result = _extract_info_once(target_url, use_proxy=True)
+            _YT_PROXY_OK["v"] = True
+            return result
+        except UserError:
+            # WARP path failed: fall back to the direct connection once,
+            # and remember that the proxy is not the working path.
+            result = _extract_info_once(target_url, use_proxy=False)
+            _YT_PROXY_OK["v"] = False
+            return result
+    return _extract_info_once(target_url, use_proxy=False)
+
+
+def _extract_info_once(target_url, use_proxy=False):
+    opts = base_opts()
+    if use_proxy:
+        opts["proxy"] = _proxy_url()
+    ydl = yt_dlp.YoutubeDL(opts)
     try:
         info = ydl.extract_info(target_url, download=False)
     except DownloadError as exc:
@@ -648,6 +694,12 @@ def download_to_file(target_url, kind, height=None, bitrate=None, format_id=None
     """
     tmpdir = tempfile.mkdtemp(prefix="ytdown-")
     opts = base_opts()
+    # Media URLs are bound to the extracting IP, so a YouTube download
+    # must leave via the same egress that extracted it (WARP, unless the
+    # last extraction proved the direct path is the working one).
+    if _is_youtube_url(target_url) and _proxy_url() \
+            and _YT_PROXY_OK["v"] is not False:
+        opts["proxy"] = _proxy_url()
     opts["outtmpl"] = os.path.join(tmpdir, "%(title).100s [%(id)s].%(ext)s")
     if progress_cb is not None:
         phook, pphook = _make_progress_hooks(progress_cb)
@@ -1058,6 +1110,39 @@ class _DiagLogger:
         self._add("error", msg)
 
 
+@app.route("/diag/<token>/ip")
+def diag_ip(token):
+    """Report this server's egress IP direct vs via the WARP proxy."""
+    if token != DIAG_TOKEN:
+        return jsonify({"ok": False}), 404
+
+    def trace(proxy=None):
+        try:
+            if proxy:
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler(
+                        {"http": proxy, "https": proxy}))
+                with opener.open(
+                        "https://www.cloudflare.com/cdn-cgi/trace",
+                        timeout=20) as resp:
+                    body = resp.read().decode("utf-8", "replace")
+            else:
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}))
+                with opener.open(
+                        "https://www.cloudflare.com/cdn-cgi/trace",
+                        timeout=20) as resp:
+                    body = resp.read().decode("utf-8", "replace")
+            fields = dict(line.split("=", 1) for line in body.splitlines()
+                          if "=" in line)
+            return {"ip": fields.get("ip"), "loc": fields.get("loc"),
+                    "warp": fields.get("warp")}
+        except Exception as exc:
+            return {"error": repr(exc)}
+
+    return jsonify({"direct": trace(), "warp": trace(_proxy_url())})
+
+
 @app.route("/diag/<token>", methods=["POST"])
 def diag_extract(token):
     if token != DIAG_TOKEN:
@@ -1097,6 +1182,8 @@ def diag_extract(token):
             opts["impersonate"] = ImpersonateTarget.from_str(data["impersonate"])
         except Exception as exc:
             logger.error(f"impersonate setup failed: {exc!r}")
+    if data.get("proxy") == "warp":
+        opts["proxy"] = _proxy_url()
     ydl = yt_dlp.YoutubeDL(opts)
     try:
         info = ydl.extract_info(target_url, download=False)
