@@ -240,15 +240,37 @@ def base_opts():
         # default; without any runtime it warns that YouTube extraction
         # is degraded and some formats may be missing. The Docker image
         # ships Node (for the PO-token server), so enable it explicitly.
-        "js_runtimes": {"node": {}},
+        "js_runtimes": {"node": {}, "deno": {}},
         "extractor_args": {"youtube": {}},
     }
     if CLIENTS:
         # Only pin the player-client list when one is configured; an empty
         # YTDOWN_CLIENTS lets yt-dlp fall back to its own default clients.
         opts["extractor_args"]["youtube"]["player_client"] = CLIENTS
-    if COOKIEFILE:
+    # fetch_pot=always forces a PO token to be minted for every player
+    # request; under the default "auto" the web_safari/mweb/tv clients
+    # never request one and YouTube bot-checks them from datacenter IPs.
+    if os.environ.get("YTDOWN_FETCH_POT"):
+        opts["extractor_args"]["youtube"]["fetch_pot"] = [
+            os.environ["YTDOWN_FETCH_POT"]]
+    # The EJS challenge-solver script: the yt-dlp-ejs pip package provides
+    # it locally, but the remote-components flag makes yt-dlp fetch it
+    # when the packaged copy does not match the running build.
+    if os.environ.get("YTDOWN_REMOTE_COMPONENTS"):
+        opts["remote_components"] = [
+            c.strip() for c in os.environ["YTDOWN_REMOTE_COMPONENTS"].split(",")
+            if c.strip()]
+    if COOKIEFILE and os.environ.get("YTDOWN_DISABLE_COOKIES") != "1":
         opts["cookiefile"] = COOKIEFILE
+    # Chrome TLS impersonation (needs curl-cffi) can matter when YouTube
+    # tarpits non-browser TLS fingerprints from datacenter IPs.
+    if os.environ.get("YTDOWN_IMPERSONATE"):
+        try:
+            from yt_dlp.networking.impersonate import ImpersonateTarget
+            opts["impersonate"] = ImpersonateTarget.from_str(
+                os.environ["YTDOWN_IMPERSONATE"])
+        except Exception as exc:
+            print(f"MegaSave: impersonate unavailable ({exc!r})", flush=True)
     # PO-token providers (bgutil-ytdlp-pot-provider 2.0.2): deliberately do
     # NOT configure the script provider. When both providers are available
     # the plugin prioritises the script one, and on Render's free tier its
@@ -1000,6 +1022,96 @@ def download_option():
         return serve_prepared_file(filename, name, tmpdir)
     except UserError as exc:
         return render_template("error.html", message=str(exc)), 400
+
+
+# --------------------------------------------------------------------------
+# TEMPORARY diagnostic endpoint (YouTube outage investigation, Nov 2026).
+# Lets us run one extraction on THIS server with per-request overrides
+# (player clients, cookies on/off, fetch_pot, impersonation) and see the
+# raw yt-dlp log, which the normal API hides. Restricted to two public
+# test videos and a token path. REMOVE once the outage is fixed.
+# --------------------------------------------------------------------------
+
+DIAG_TOKEN = "d7f3a91c4b2e48f0a5c6"
+DIAG_ALLOWED_IDS = {"0XVyiMzCIlo", "dQw4w9WgXcQ"}
+
+
+class _DiagLogger:
+    def __init__(self):
+        self.lines = []
+
+    def _add(self, level, msg):
+        self.lines.append(f"{level}: {msg}")
+        if len(self.lines) > 400:
+            self.lines = self.lines[-400:]
+
+    def debug(self, msg):
+        self._add("debug", msg)
+
+    def info(self, msg):
+        self._add("info", msg)
+
+    def warning(self, msg):
+        self._add("warning", msg)
+
+    def error(self, msg):
+        self._add("error", msg)
+
+
+@app.route("/diag/<token>", methods=["POST"])
+def diag_extract(token):
+    if token != DIAG_TOKEN:
+        return jsonify({"ok": False}), 404
+    data = request.get_json(silent=True) or {}
+    url = data.get("url") or ""
+    try:
+        _, target_url = parse_target(url)
+    except UserError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    vid = target_url.rsplit("v=", 1)[-1]
+    if vid not in DIAG_ALLOWED_IDS:
+        return jsonify({"ok": False, "error": "test videos only"}), 400
+
+    logger = _DiagLogger()
+    opts = base_opts()
+    opts["verbose"] = True
+    opts["logger"] = logger
+    opts.pop("quiet", None)
+    opts.pop("no_warnings", None)
+    yt_args = opts["extractor_args"].setdefault("youtube", {})
+    if "clients" in data:
+        clients = data["clients"]
+        if clients:
+            yt_args["player_client"] = clients
+        else:
+            yt_args.pop("player_client", None)
+    if data.get("fetch_pot"):
+        yt_args["fetch_pot"] = [data["fetch_pot"]]
+    if data.get("cookies") is False:
+        opts.pop("cookiefile", None)
+    if data.get("remote_components"):
+        opts["remote_components"] = ["ejs:github"]
+    if data.get("impersonate"):
+        try:
+            from yt_dlp.networking.impersonate import ImpersonateTarget
+            opts["impersonate"] = ImpersonateTarget.from_str(data["impersonate"])
+        except Exception as exc:
+            logger.error(f"impersonate setup failed: {exc!r}")
+    ydl = yt_dlp.YoutubeDL(opts)
+    try:
+        info = ydl.extract_info(target_url, download=False)
+        return jsonify({
+            "ok": True, "title": info.get("title"),
+            "n_formats": len(info.get("formats") or []),
+            "log": logger.lines[-160:],
+        })
+    except Exception as exc:
+        return jsonify({
+            "ok": False, "error": f"{type(exc).__name__}: {exc}",
+            "log": logger.lines[-160:],
+        })
+    finally:
+        _close_quietly(ydl)
 
 
 # --------------------------------------------------------------------------

@@ -29,6 +29,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
 # http://127.0.0.1:4416 (its default address, internal to this container).
 COPY --from=bgutil /usr/local/bin/node /usr/local/bin/node
 COPY --from=bgutil /src/server /opt/bgutil/server
+# Deno is yt-dlp's default-enabled JavaScript runtime (>=2.3.0 needed for
+# the EJS challenge solver). Node alone must be opted in; Deno needs no
+# configuration, so shipping it guarantees a working runtime.
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 ENV YTDOWN_POT_SERVER_HOME=/opt/bgutil/server
 
 WORKDIR /app

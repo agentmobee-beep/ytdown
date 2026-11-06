@@ -9,3 +9,6 @@ yt-dlp-ejs>=0.3
 # into the Docker image (see BGUTIL_VERSION in the Dockerfile). The plugin
 # refuses to use a server whose major version differs from its own.
 bgutil-ytdlp-pot-provider==2.0.2
+# TLS impersonation support for yt-dlp (Chrome fingerprint); used when
+# YTDOWN_IMPERSONATE or the diagnostic endpoint requests it.
+curl-cffi
